@@ -6,12 +6,22 @@ use Illuminate\Database\Eloquent\Model;
 
 class SppBill extends Model
 {
-    // Penting: Membuka kunci agar semua kolom bisa diisi
     protected $guarded = ['id'];
 
-    // Relasi: Tagihan ini milik siapa? (Ke tabel Students)
+    // Agar kolom tanggal otomatis jadi Object Carbon (bisa diformat .format('d M Y'))
+    protected $casts = [
+        'paid_at' => 'datetime',
+    ];
+
+    // Relasi ke Siswa
     public function student()
     {
         return $this->belongsTo(Student::class);
+    }
+
+    // Relasi ke Staff TU yang konfirmasi (jika bayar manual)
+    public function confirmer()
+    {
+        return $this->belongsTo(User::class, 'confirmed_by');
     }
 }

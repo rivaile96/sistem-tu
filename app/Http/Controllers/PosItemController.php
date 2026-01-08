@@ -4,67 +4,77 @@ namespace App\Http\Controllers;
 
 use App\Models\PosItem;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage; // <--- PENTING!
 
 class PosItemController extends Controller
 {
-    // 1. Tampilkan Daftar Barang (Inventory)
     public function index(Request $request)
     {
         $query = PosItem::query();
-
-        // Fitur Pencarian
         if ($request->has('search')) {
             $query->where('name', 'like', '%' . $request->search . '%')
                   ->orWhere('category', 'like', '%' . $request->search . '%');
         }
-
-        $items = $query->latest()->paginate(10);
-
+        $items = $query->orderBy('stock', 'asc')->paginate(10);
         return view('pos.items.index', compact('items'));
     }
 
-    // 2. Simpan Barang Baru
     public function store(Request $request)
     {
         $request->validate([
             'name' => 'required|string|max:255',
             'category' => 'required|string',
-            'price' => 'required|numeric|min:0',
             'stock' => 'required|integer|min:0',
+            'price' => 'required|numeric|min:0',
+            'image' => 'nullable|image|mimes:jpeg,png,jpg|max:2048', // Validasi Gambar
         ]);
 
-        PosItem::create([
-            'name' => $request->name,
-            'category' => $request->category,
-            'price' => $request->price,
-            'stock' => $request->stock,
-            'is_active' => true
-        ]);
+        $data = $request->all();
 
-        return back()->with('success', 'Barang berhasil ditambahkan!');
+        // Logic Upload Gambar Baru
+        if ($request->hasFile('image')) {
+            $path = $request->file('image')->store('products', 'public');
+            $data['image'] = $path;
+        }
+
+        PosItem::create($data);
+        return redirect()->back()->with('success', 'Barang berhasil ditambahkan!');
     }
 
-    // 3. Update Barang (Edit Harga/Stok)
     public function update(Request $request, $id)
     {
-        $item = PosItem::findOrFail($id);
-
         $request->validate([
-            'name' => 'required|string',
-            'category' => 'required|string',
-            'price' => 'required|numeric',
+            'name' => 'required',
             'stock' => 'required|integer',
+            'price' => 'required|numeric',
+            'image' => 'nullable|image|mimes:jpeg,png,jpg|max:2048',
         ]);
 
-        $item->update($request->all());
+        $item = PosItem::findOrFail($id);
+        $data = $request->all();
 
-        return back()->with('success', 'Data barang diperbarui!');
+        // Logic Ganti Gambar
+        if ($request->hasFile('image')) {
+            if ($item->image) {
+                Storage::disk('public')->delete($item->image); // Hapus yg lama
+            }
+            $path = $request->file('image')->store('products', 'public');
+            $data['image'] = $path;
+        }
+
+        $item->update($data);
+        return redirect()->back()->with('success', 'Data barang diperbarui!');
     }
 
-    // 4. Hapus Barang
     public function destroy($id)
     {
-        PosItem::destroy($id);
-        return back()->with('success', 'Barang dihapus dari sistem.');
+        $item = PosItem::findOrFail($id);
+        
+        if ($item->image) {
+            Storage::disk('public')->delete($item->image); // Bersihkan file
+        }
+
+        $item->delete();
+        return redirect()->back()->with('success', 'Barang dihapus dari sistem.');
     }
 }

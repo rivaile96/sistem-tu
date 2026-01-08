@@ -1,1 +1,8 @@
-@import "tailwindcss";
+/* stylelint-disable at-rule-no-unknown */
+
+/* Tailwind entry points */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* stylelint-enable at-rule-no-unknown */

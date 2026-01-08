@@ -3,58 +3,83 @@
 namespace App\Http\Controllers;
 
 use App\Models\PosItem;
-use App\Models\PosOrder;
-use App\Models\PosOrderItem;
+use App\Models\PosTransaction;
+use App\Models\PosTransactionItem;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 
 class PosTransactionController extends Controller
 {
-    // 1. Halaman Kasir (Tampilkan Barang)
+    // 1. Tampilkan Halaman Kasir
     public function index()
     {
-        // Ambil semua barang yang stoknya ada
-        $items = PosItem::where('is_active', true)
-                        ->where('stock', '>', 0)
-                        ->get();
-
-        return view('pos.transaction', compact('items'));
+        // Kita ambil semua barang yang stoknya ada
+        // Dikirim ke View buat diolah sama AlpineJS (Pencarian Instant)
+        $items = PosItem::where('stock', '>', 0)->orderBy('name')->get();
+        
+        return view('pos.transaction.index', compact('items'));
     }
 
     // 2. Proses Simpan Transaksi (Checkout)
     public function store(Request $request)
     {
         $request->validate([
-            'cart' => 'required|array', // Data keranjang dikirim sebagai Array JSON
+            'cart' => 'required|array',
+            'cart.*.id' => 'required|exists:pos_items,id',
+            'cart.*.qty' => 'required|integer|min:1',
+            'payment_amount' => 'required|numeric',
             'total_amount' => 'required|numeric',
-            'payment_method' => 'required|string',
         ]);
 
-        DB::transaction(function () use ($request) {
-            // A. Buat Order Header
-            $order = PosOrder::create([
-                'user_id' => Auth::id() ?? 1, // Fallback ID 1 jika belum login
-                'transaction_code' => 'TRX-' . time(),
+        // Gunakan DB Transaction biar aman (kalau gagal 1, gagal semua)
+        try {
+            DB::beginTransaction();
+
+            // A. Simpan Header Transaksi
+            $transaction = PosTransaction::create([
+                'user_id' => Auth::id(), // Siapa kasirnya
+                'transaction_code' => 'TRX-' . time(), // Kode unik
                 'total_amount' => $request->total_amount,
-                'status' => 'PAID', // Asumsi langsung lunas di kasir
-                // Nanti bisa tambah kolom payment_method di tabel pos_orders jika perlu
+                'payment_amount' => $request->payment_amount,
+                'change_amount' => $request->payment_amount - $request->total_amount,
+                'status' => 'LUNAS',
             ]);
 
             // B. Simpan Detail Item & Kurangi Stok
-            foreach ($request->cart as $item) {
-                PosOrderItem::create([
-                    'pos_order_id' => $order->id,
-                    'pos_item_id' => $item['id'],
-                    'quantity' => $item['qty'],
-                    'price_at_transaction' => $item['price'],
+            foreach ($request->cart as $cartItem) {
+                // Ambil data barang asli dari DB (buat safety harga)
+                $itemDB = PosItem::lockForUpdate()->find($cartItem['id']);
+
+                if ($itemDB->stock < $cartItem['qty']) {
+                    throw new \Exception("Stok barang {$itemDB->name} tidak cukup!");
+                }
+
+                // Kurangi Stok
+                $itemDB->decrement('stock', $cartItem['qty']);
+
+                // Simpan ke tabel detail
+                PosTransactionItem::create([
+                    'pos_transaction_id' => $transaction->id,
+                    'pos_item_id' => $itemDB->id,
+                    'quantity' => $cartItem['qty'],
+                    'price_per_item' => $itemDB->price,
+                    'subtotal' => $itemDB->price * $cartItem['qty'],
                 ]);
-
-                // Kurangi Stok Real di Database
-                PosItem::where('id', $item['id'])->decrement('stock', $item['qty']);
             }
-        });
 
-        return response()->json(['status' => 'success', 'message' => 'Transaksi Berhasil!']);
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Transaksi Berhasil!',
+                'change' => number_format($transaction->change_amount, 0, ',', '.'),
+                'trx_id' => $transaction->id
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 400);
+        }
     }
 }
