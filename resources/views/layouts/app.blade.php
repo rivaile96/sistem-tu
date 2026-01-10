@@ -39,7 +39,7 @@
         </div>
 
         <nav class="flex-1 overflow-y-auto custom-scroll px-3 py-6 space-y-2">
-            <p class="px-3 text-[10px] font-bold text-blue-100 uppercase tracking-widest mb-2 opacity-70">Menu</p>
+            <p class="px-3 text-[10px] font-bold text-blue-100 uppercase tracking-widest mb-2 opacity-70">Menu Utama</p>
             
             <a href="{{ route('dashboard') }}" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition font-medium {{ request()->routeIs('dashboard') ? 'bg-white text-[#0ea5e9] shadow-md' : 'text-blue-50 hover:bg-white/10 hover:text-white' }}">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>
@@ -67,7 +67,24 @@
                        <span>Kasir / Transaksi</span>
                     </a>
                     <a href="{{ route('pos.history.index') }}" class="flex items-center gap-3 px-3 py-2 rounded-lg text-xs transition {{ request()->routeIs('pos.history.*') ? 'bg-white text-[#0ea5e9] font-bold shadow-sm' : 'text-blue-100 hover:text-white hover:bg-white/10' }}">
-                       <span>Riwayat</span>
+                       <span>Riwayat Transaksi</span>
+                    </a>
+                </div>
+            </div>
+
+            <p class="px-3 text-[10px] font-bold text-blue-100 uppercase tracking-widest mb-2 mt-6 opacity-70">Pengaturan</p>
+
+            <div x-data="{ open: {{ request()->routeIs('settings.*') ? 'true' : 'false' }} }">
+                <button @click="open = !open" class="w-full flex justify-between items-center px-3 py-2.5 rounded-xl text-sm transition font-medium {{ request()->routeIs('settings.*') ? 'bg-white/10 text-white' : 'text-blue-50 hover:bg-white/10 hover:text-white' }}">
+                    <div class="flex items-center gap-3">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                        <span>Konfigurasi</span>
+                    </div>
+                    <svg class="w-4 h-4 transition-transform duration-200" :class="{'rotate-180': open}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                </button>
+                <div x-show="open" x-cloak class="mt-1 space-y-1 bg-[#0284c7]/30 rounded-xl p-1">
+                    <a href="{{ route('settings.integration') }}" class="flex items-center gap-3 px-3 py-2 rounded-lg text-xs transition {{ request()->routeIs('settings.integration') ? 'bg-white text-[#0ea5e9] font-bold shadow-sm' : 'text-blue-100 hover:text-white hover:bg-white/10' }}">
+                       <span>Integrasi Kesiswaan</span>
                     </a>
                 </div>
             </div>

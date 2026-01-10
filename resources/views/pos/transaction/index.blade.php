@@ -375,7 +375,10 @@
                                 cancelButtonText: 'Tutup'
                             }).then((result) => {
                                 // TODO: Nanti arahkan ke Route Print Struk disini
-                                // if (result.isConfirmed) window.open(...)
+                                if (result.isConfirmed) {
+                                    const printUrl = `{{ url('/pos/transaction') }}/${data.trx_id}/print`;
+                                    window.open(printUrl, '_blank', 'width=400,height=600');
+                                }
                                 window.location.reload();
                             });
                         } else {
