@@ -10,6 +10,7 @@ use App\Http\Controllers\PosTransactionController;
 use App\Http\Controllers\PosItemController;
 use App\Http\Controllers\PosReportController;
 use App\Http\Controllers\IntegrationController; // <--- Controller Baru untuk Sync Siswa
+use App\Http\Controllers\StudentController;     // <--- TAMBAHAN untuk Modul Siswa
 
 /*
 |--------------------------------------------------------------------------
@@ -59,6 +60,18 @@ Route::middleware(['auth', 'verified'])->group(function () {
     });
 
 
+    // =========================================================
+    //  🔥 MODUL MANAJEMEN SISWA (Pusat Data Tagihan & Riwayat)
+    // =========================================================
+    Route::prefix('students')->name('students.')->group(function () {
+        // List semua siswa
+        Route::get('/', [StudentController::class, 'index'])->name('index');
+
+        // Detail keuangan 1 siswa (SPP + POS)
+        Route::get('/{id}/finance', [StudentController::class, 'show'])->name('show');
+    });
+
+
     // 3. MODUL POS (Kasir & Stok)
     Route::prefix('pos')->name('pos.')->group(function () {
         // Master Barang (CRUD)
@@ -74,6 +87,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         // Laporan / Riwayat Penjualan
         Route::get('/history', [PosReportController::class, 'index'])->name('history.index');
         Route::get('/history/{id}', [PosReportController::class, 'show'])->name('history.show');
+        Route::post('/history/{id}/repay', [PosReportController::class, 'repay'])->name('history.repay');
     });
 
 
