@@ -2,15 +2,18 @@
 
 use Illuminate\Support\Facades\Route;
 
-// Import Semua Controller
-use App\Http\Controllers\DashboardController;
-use App\Http\Controllers\ProfileController;
-use App\Http\Controllers\SppController;
-use App\Http\Controllers\PosTransactionController;
-use App\Http\Controllers\PosItemController;
-use App\Http\Controllers\PosReportController;
-use App\Http\Controllers\IntegrationController; // <--- Controller Baru untuk Sync Siswa
-use App\Http\Controllers\StudentController;     // <--- TAMBAHAN untuk Modul Siswa
+// =========================================================================
+//  IMPORT CONTROLLER
+// =========================================================================
+use App\Http\Controllers\DashboardController;   // Dashboard Utama
+use App\Http\Controllers\ProfileController;     // Profil User
+use App\Http\Controllers\SppController;         // (Legacy) SPP Lama
+use App\Http\Controllers\BillController;        // (New) Sistem Tagihan Terpusat
+use App\Http\Controllers\StudentController;     // Manajemen Siswa
+use App\Http\Controllers\PosItemController;     // Master Barang POS
+use App\Http\Controllers\PosTransactionController; // Transaksi Kasir
+use App\Http\Controllers\PosReportController;   // Laporan POS & Pelunasan
+use App\Http\Controllers\IntegrationController; // Integrasi Database PPDB
 
 /*
 |--------------------------------------------------------------------------
@@ -18,10 +21,11 @@ use App\Http\Controllers\StudentController;     // <--- TAMBAHAN untuk Modul Sis
 |--------------------------------------------------------------------------
 |
 | Terorganisir berdasarkan modul:
-| 1. Dashboard
-| 2. SPP (Keuangan Sekolah)
-| 3. POS (Kantin & Koperasi)
-| 4. Pengaturan & Integrasi
+| 1. Dashboard (Executive)
+| 2. Manajemen Siswa (Data & Keuangan)
+| 3. Tagihan (Billing, Kwitansi, Export)
+| 4. POS (Kantin, Stok, History)
+| 5. Pengaturan (Integrasi PPDB)
 |
 */
 
@@ -39,44 +43,38 @@ require __DIR__.'/auth.php';
 // =========================================================================
 Route::middleware(['auth', 'verified'])->group(function () {
 
-    // 1. DASHBOARD UTAMA
+    // 1. DASHBOARD UTAMA (Executive Dashboard)
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
-    // 2. MODUL SPP (Uang Sekolah)
-    Route::prefix('spp')->name('spp.')->group(function () {
-        // Halaman Daftar Tagihan
-        Route::get('/', [SppController::class, 'index'])->name('index');
-        
-        // Generate Tagihan Massal
-        Route::get('/generate', [SppController::class, 'createGenerate'])->name('create_generate');
-        Route::post('/generate', [SppController::class, 'storeGenerate'])->name('store_generate');
-        
-        // Pembayaran & Invoice
-        Route::post('/{id}/pay-manual', [SppController::class, 'storePayment'])->name('pay_manual');
-        Route::get('/{id}/midtrans-token', [SppController::class, 'getMidtransToken'])->name('midtrans_token');
-        Route::get('/{id}/print', [SppController::class, 'printInvoice'])->name('print');
-    });
-
-    // =========================================================
-    //  🔥 MODUL MANAJEMEN SISWA (Pusat Data Tagihan & Riwayat)
-    // =========================================================
+    // 2. MODUL MANAJEMEN SISWA (Pusat Data Tagihan & Riwayat)
     Route::prefix('students')->name('students.')->group(function () {
-        // List semua siswa
+        // List semua siswa (Filter Kelas & Search)
         Route::get('/', [StudentController::class, 'index'])->name('index');
 
-        // Detail keuangan 1 siswa (SPP + POS)
+        // Detail keuangan 1 siswa (Kartu SPP + History Jajan)
         Route::get('/{id}/finance', [StudentController::class, 'show'])->name('show');
     });
 
-    // MODUL TAGIHAN (BILLING)
+    // 3. MODUL TAGIHAN / BILLING (SPP, Gedung, Seragam, dll)
     Route::prefix('bills')->name('bills.')->group(function () {
-        Route::get('/generate', [App\Http\Controllers\BillController::class, 'create'])->name('create');
-        Route::post('/generate', [App\Http\Controllers\BillController::class, 'store'])->name('store');
+        // Monitoring & Laporan
+        Route::get('/', [BillController::class, 'index'])->name('index'); 
+        
+        // [PENTING] Route Export ditaruh SEBELUM route {id} biar gak bentrok
+        Route::get('/export', [BillController::class, 'export'])->name('export'); 
+
+        // Generate Tagihan Massal
+        Route::get('/generate', [BillController::class, 'create'])->name('create');
+        Route::post('/generate', [BillController::class, 'store'])->name('store');
+        
+        // Aksi Tagihan (Bayar & Cetak)
+        Route::post('/{id}/pay', [BillController::class, 'pay'])->name('pay');
+        Route::get('/{id}/print', [BillController::class, 'print'])->name('print');
     });
 
-    // 3. MODUL POS (Kasir & Stok)
+    // 4. MODUL POS (Kantin & Koperasi)
     Route::prefix('pos')->name('pos.')->group(function () {
-        // Master Barang (CRUD)
+        // Master Barang (CRUD Stok)
         Route::resource('items', PosItemController::class);
 
         // Transaksi Kasir
@@ -88,19 +86,32 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         // Laporan / Riwayat Penjualan
         Route::get('/history', [PosReportController::class, 'index'])->name('history.index');
-        Route::get('/history/{id}', [PosReportController::class, 'show'])->name('history.show');
+        // Route::get('/history/{id}', [PosReportController::class, 'show'])->name('history.show'); // Opsional jika butuh detail
+        
+        // Pelunasan Hutang Kantin
         Route::post('/history/{id}/repay', [PosReportController::class, 'repay'])->name('history.repay');
     });
 
-    // 4. PENGATURAN & INTEGRASI (Baru!)
+    // 5. PENGATURAN & INTEGRASI
     Route::prefix('settings')->name('settings.')->group(function () {
-        // Menu Integrasi Kesiswaan (Sync Database)
+        // Halaman Konfigurasi Database PPDB
         Route::get('/integration', [IntegrationController::class, 'index'])->name('integration');
+        
+        // Simpan Konfigurasi
         Route::post('/integration', [IntegrationController::class, 'update'])->name('integration.update');
+        
+        // Eksekusi Tarik Data
         Route::post('/integration/sync', [IntegrationController::class, 'sync'])->name('integration.sync');
     });
 
-    // 5. PROFILE USER (Bawaan Laravel)
+    // 6. LEGACY SPP (Opsional - Jika masih ada menu lama yang mengarah ke sini)
+    Route::prefix('spp')->name('spp.')->group(function () {
+        Route::get('/', [SppController::class, 'index'])->name('index');
+        Route::get('/generate', [SppController::class, 'createGenerate'])->name('create_generate');
+        Route::post('/generate', [SppController::class, 'storeGenerate'])->name('store_generate');
+    });
+
+    // 7. PROFILE USER (Bawaan Laravel)
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');

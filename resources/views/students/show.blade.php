@@ -106,11 +106,22 @@
                                         </td>
                                         <td class="px-4 py-3 text-right">
                                             @if($bill->status == 'UNPAID')
-                                                <button disabled class="text-xs bg-gray-100 text-gray-400 px-3 py-1.5 rounded cursor-not-allowed" title="Fitur Bayar Segera Hadir">
-                                                    Bayar
+                                                <button onclick="confirmBillPay('{{ $bill->id }}', '{{ $bill->name }}', '{{ $bill->formatted_amount }}')"
+                                                        class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-md hover:shadow-lg transition transform active:scale-95">
+                                                    Bayar Sekarang
                                                 </button>
                                             @else
-                                                <span class="text-green-600 text-xs font-bold">✓ Selesai</span>
+                                                <div class="flex items-center justify-end gap-2">
+                                                    <span class="text-green-600 text-xs font-bold flex items-center gap-1">
+                                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                                                        Lunas
+                                                    </span>
+                                                    <a href="{{ route('bills.print', $bill->id) }}" target="_blank" 
+                                                       class="text-gray-500 hover:text-gray-800 bg-gray-100 hover:bg-gray-200 p-1.5 rounded border border-gray-200 transition" 
+                                                       title="Cetak Kwitansi">
+                                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
+                                                    </a>
+                                                </div>
                                             @endif
                                         </td>
                                     </tr>
@@ -172,4 +183,29 @@
             </div>
         </div>
     </div>
+
+    <script>
+        function confirmBillPay(id, name, amount) {
+            Swal.fire({
+                title: 'Konfirmasi Pembayaran',
+                html: `Terima pembayaran <b>${name}</b> sebesar <br><span class="text-2xl font-bold text-blue-600">${amount}</span> ?`,
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonColor: '#2563eb', // Blue
+                cancelButtonColor: '#d1d5db',
+                confirmButtonText: 'Ya, Terima Uang',
+                cancelButtonText: 'Batal'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    // Buat Form Post Dinamis
+                    let form = document.createElement('form');
+                    form.method = 'POST';
+                    form.action = `/bills/${id}/pay`;
+                    form.innerHTML = `@csrf`;
+                    document.body.appendChild(form);
+                    form.submit();
+                }
+            });
+        }
+    </script>
 </x-app-layout>
