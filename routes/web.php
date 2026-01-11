@@ -34,7 +34,6 @@ Route::get('/', function () {
 // Load Route Auth bawaan Breeze (Login, Register, Reset Password)
 require __DIR__.'/auth.php';
 
-
 // =========================================================================
 //  PROTECTED ROUTES (Wajib Login & Email Verified)
 // =========================================================================
@@ -42,7 +41,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     // 1. DASHBOARD UTAMA
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
-
 
     // 2. MODUL SPP (Uang Sekolah)
     Route::prefix('spp')->name('spp.')->group(function () {
@@ -59,7 +57,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/{id}/print', [SppController::class, 'printInvoice'])->name('print');
     });
 
-
     // =========================================================
     //  🔥 MODUL MANAJEMEN SISWA (Pusat Data Tagihan & Riwayat)
     // =========================================================
@@ -71,6 +68,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/{id}/finance', [StudentController::class, 'show'])->name('show');
     });
 
+    // MODUL TAGIHAN (BILLING)
+    Route::prefix('bills')->name('bills.')->group(function () {
+        Route::get('/generate', [App\Http\Controllers\BillController::class, 'create'])->name('create');
+        Route::post('/generate', [App\Http\Controllers\BillController::class, 'store'])->name('store');
+    });
 
     // 3. MODUL POS (Kasir & Stok)
     Route::prefix('pos')->name('pos.')->group(function () {
@@ -90,7 +92,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/history/{id}/repay', [PosReportController::class, 'repay'])->name('history.repay');
     });
 
-
     // 4. PENGATURAN & INTEGRASI (Baru!)
     Route::prefix('settings')->name('settings.')->group(function () {
         // Menu Integrasi Kesiswaan (Sync Database)
@@ -98,7 +99,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/integration', [IntegrationController::class, 'update'])->name('integration.update');
         Route::post('/integration/sync', [IntegrationController::class, 'sync'])->name('integration.sync');
     });
-
 
     // 5. PROFILE USER (Bawaan Laravel)
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');

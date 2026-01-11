@@ -13,12 +13,11 @@ class IntegrationController extends Controller
     // 1. Tampilkan Halaman Setup
     public function index()
     {
-        // Ambil settingan yang tersimpan (biar form terisi otomatis)
         $settings = Setting::pluck('value', 'key')->toArray();
         return view('settings.integration', compact('settings'));
     }
 
-    // 2. Simpan Konfigurasi
+    // 2. Simpan Konfigurasi Database
     public function update(Request $request)
     {
         $data = $request->validate([
@@ -29,7 +28,6 @@ class IntegrationController extends Controller
             'kesiswaan_pass' => 'nullable',
         ]);
 
-        // Simpan ke database settings (Looping biar rapi)
         foreach ($data as $key => $value) {
             Setting::updateOrCreate(['key' => $key], ['value' => $value]);
         }
@@ -37,32 +35,54 @@ class IntegrationController extends Controller
         return back()->with('success', 'Konfigurasi berhasil disimpan!');
     }
 
-    // 3. Action TEST KONEKSI & SYNC
+    // 3. Action TEST KONEKSI & SYNC (Khusus Struktur db_ppdb_sekolah)
     public function sync()
     {
         try {
-            // A. Konfigurasi Koneksi "On-The-Fly" (Tanpa edit .env)
+            // A. Konfigurasi Koneksi "On-The-Fly"
             $this->configureConnection();
 
-            // B. Coba Connect & Ambil Data
-            // Asumsi tabel di sana namanya 'students' juga
-            $remoteStudents = DB::connection('kesiswaan_remote')->table('students')->get();
+            // B. Tarik Data dari Tabel PPDB 'student_candidates'
+            // Kita filter yang punya Nama Lengkap aja biar data sampah gak masuk
+            $remoteStudents = DB::connection('kesiswaan_remote')
+                                ->table('student_candidates')
+                                ->whereNotNull('nama_lengkap')
+                                ->get();
+
+            if ($remoteStudents->isEmpty()) {
+                return back()->with('error', 'Koneksi Sukses, tapi tabel student_candidates kosong/tidak ditemukan.');
+            }
 
             // C. Looping & Update Data Lokal TU
             $countNew = 0;
             $countUpdated = 0;
 
             foreach ($remoteStudents as $remote) {
-                // Kita pakai NIS sebagai patokan (Unique Key)
+                // LOGIC MAPPING DATA (PPDB -> TU)
+                
+                // 1. Tentukan Identitas Unik (NIS)
+                // Kalau NISN kosong, kita pakai ID pendaftaran sementara
+                $nisFix = !empty($remote->nisn) ? $remote->nisn : 'REG-' . $remote->id;
+
+                // 2. Tentukan No HP Ortu (Prioritas: Ayah -> Ibu -> Wali -> Siswa)
+                $phoneFix = $remote->no_hp_ayah ?? $remote->no_hp_ibu ?? $remote->no_hp_wali ?? $remote->no_hp_siswa;
+
+                // 3. Tentukan Kelas (Misal: "X - RPL")
+                // Karena di PPDB cuma ada jurusan, kita default-kan depannya 'X' (Kelas 10)
+                $jurusan = $remote->jurusan_pilihan ?? 'Umum';
+                $kelasFix = "X - " . $jurusan;
+
+                // Eksekusi Simpan ke Database Lokal
                 $local = Student::updateOrCreate(
-                    ['nis' => $remote->nis], // Cari berdasarkan NIS
+                    ['nis' => $nisFix], // Kunci pencarian (biar gak duplikat)
                     [
-                        'name' => $remote->name,
-                        'class_name' => $remote->class_name ?? $remote->kelas, // Sesuaikan nama kolom
-                        // Penting: Kita tarik UID NFC juga
-                        // Pastikan di kesiswaan ada kolom nfc_uid atau sejenisnya
-                        // 'nfc_uid' => $remote->nfc_uid ?? null, 
-                        // 'parent_phone' => $remote->phone_ortu ?? null,
+                        'name' => $remote->nama_lengkap,
+                        'class_name' => $kelasFix, 
+                        'parent_phone' => $phoneFix,
+                        // Kita anggap semua data dari PPDB statusnya 'active'
+                        'status' => 'active', 
+                        // Jika ada kolom nfc_uid di PPDB bisa ditarik juga, kalau gak ada biarin null
+                        // 'nfc_uid' => $remote->nfc_uid ?? null 
                     ]
                 );
 
@@ -73,10 +93,10 @@ class IntegrationController extends Controller
                 }
             }
 
-            return back()->with('success', "Sukses! Data Ditarik: {$remoteStudents->count()}. Baru: {$countNew}, Update: {$countUpdated}");
+            return back()->with('success', "Sukses Integrasi! Ditarik: {$remoteStudents->count()}. Siswa Baru: {$countNew}, Update Data: {$countUpdated}");
 
         } catch (\Exception $e) {
-            return back()->with('error', 'Gagal Konek: ' . $e->getMessage());
+            return back()->with('error', 'Gagal Sync: ' . $e->getMessage());
         }
     }
 
@@ -85,9 +105,8 @@ class IntegrationController extends Controller
     {
         $settings = Setting::pluck('value', 'key')->toArray();
 
-        // Set config laravel secara dinamis saat runtime
         Config::set('database.connections.kesiswaan_remote', [
-            'driver' => 'mysql', // atau mariadb
+            'driver' => 'mysql',
             'host' => $settings['kesiswaan_host'] ?? '127.0.0.1',
             'port' => $settings['kesiswaan_port'] ?? '3306',
             'database' => $settings['kesiswaan_db'] ?? '',
@@ -99,7 +118,6 @@ class IntegrationController extends Controller
             'strict' => false,
         ]);
         
-        // Refresh cache database
         DB::purge('kesiswaan_remote');
     }
 }
