@@ -1,5 +1,5 @@
 <x-app-layout>
-    <div class="max-w-3xl mx-auto space-y-6">
+    <div class="max-w-full mx-auto px-4 sm:px-6 lg:px-8"></div>
         
         <div>
             <h2 class="text-2xl font-bold text-gray-800">Generator Tagihan Massal</h2>

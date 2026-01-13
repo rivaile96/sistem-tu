@@ -1,7 +1,5 @@
 <x-app-layout>
-    <div class="p-6">
-        <div class="max-w-4xl mx-auto">
-            
+    <div class="max-w-full mx-auto px-4 sm:px-6 lg:px-8"></div>        
             <div class="mb-8">
                 <h2 class="text-2xl font-bold text-gray-800">Integrasi Kesiswaan</h2>
                 <p class="text-gray-500">Hubungkan Sistem TU dengan Database Kesiswaan untuk sinkronisasi data siswa otomatis.</p>

@@ -106,13 +106,24 @@ class BillController extends Controller
     {
         try {
             $bill = StudentBill::findOrFail($id);
+
+            // 1. Cek validasi: Kalau udah lunas, tolak.
             if ($bill->status == 'PAID') {
                 return back()->with('error', 'Tagihan ini sudah lunas sebelumnya!');
             }
-            $bill->update(['status' => 'PAID']);
-            return back()->with('success', "Pembayaran berhasil diterima!");
+
+            // 2. Update Database
+            $bill->update([
+                'status' => 'PAID',
+                'payment_method' => 'CASH', // <--- INI PENTING: Menandai uang masuk via Kasir/Tunai
+                'updated_at' => now(),      // Catat waktu pembayaran real-time
+            ]);
+
+            return back()->with('success', "Pembayaran TUNAI (CASH) berhasil diterima!");
+
         } catch (\Exception $e) {
-            return back()->with('error', 'Gagal memproses pembayaran.');
+            // Tampilkan error aslinya biar gampang debug kalau ada masalah
+            return back()->with('error', 'Gagal memproses pembayaran: ' . $e->getMessage());
         }
     }
 

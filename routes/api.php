@@ -2,23 +2,21 @@
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\MidtransController;
+use App\Http\Controllers\Api\ParentApiController; // <--- Pastikan ini ada!
 
 /*
 |--------------------------------------------------------------------------
-| API Routes (Jalur Eksternal)
+| API Routes
 |--------------------------------------------------------------------------
-|
-| Jalur ini tidak memiliki session/login (Stateless).
-| Jalur ini WAJIB ada agar status pembayaran bisa update otomatis (LUNAS).
-|
 */
 
-// 1. Webhook Midtrans
-// URL ini nanti dimasukkan ke Dashboard Midtrans: domain.com/api/midtrans/callback
-Route::post('/midtrans/callback', [MidtransController::class, 'callback']);
+// 1. PUBLIC ROUTES (Login & Webhook)
+// Ini jalur yang lu tembak di Postman
+Route::post('/login', [ParentApiController::class, 'login']);
+Route::post('/midtrans-callback', [ParentApiController::class, 'callback']);
 
-// 2. User Info (Bawaan Laravel, biarkan saja)
-Route::get('/user', function (Request $request) {
-    return $request->user();
-})->middleware('auth:sanctum');
+// 2. PROTECTED ROUTES (Harus Punya Token)
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/home', [ParentApiController::class, 'getHomeData']);
+    Route::post('/payment/create', [ParentApiController::class, 'createPayment']);
+});
