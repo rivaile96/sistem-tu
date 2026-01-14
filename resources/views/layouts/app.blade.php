@@ -73,6 +73,14 @@
                     <a href="{{ route('pos.items.index') }}" class="flex items-center gap-3 px-3 py-2 rounded-lg text-xs transition {{ request()->routeIs('pos.items.*') ? 'bg-white text-[#0ea5e9] font-bold shadow-sm' : 'text-blue-100 hover:text-white hover:bg-white/10' }}">
                        <span>Master Barang</span>
                     </a>
+                    <a href="{{ route('pos.bundles.index') }}"
+   class="flex items-center gap-3 px-3 py-2 rounded-lg text-xs transition
+   {{ request()->routeIs('pos.bundles.*') 
+        ? 'bg-white text-[#0ea5e9] font-bold shadow-sm' 
+        : 'text-blue-100 hover:text-white hover:bg-white/10' }}">
+    
+    <span>Paket Bundling</span>
+</a>
                     <a href="{{ route('pos.transaction') }}" class="flex items-center gap-3 px-3 py-2 rounded-lg text-xs transition {{ request()->routeIs('pos.transaction') ? 'bg-white text-[#0ea5e9] font-bold shadow-sm' : 'text-blue-100 hover:text-white hover:bg-white/10' }}">
                        <span>Kasir / Transaksi</span>
                     </a>

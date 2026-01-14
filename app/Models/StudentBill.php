@@ -19,7 +19,13 @@ class StudentBill extends Model
     {
         return 'Rp ' . number_format($this->amount, 0, ',', '.');
     }
-    
+
+    // Relasi Baru: Tagihan punya banyak Item
+    public function items()
+    {
+        return $this->hasMany(BillItem::class, 'student_bill_id');
+    }
+
     // Helper buat warna badge status (biar view rapi)
     public function getStatusColorAttribute()
     {

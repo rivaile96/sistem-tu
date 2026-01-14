@@ -6,14 +6,20 @@ use Illuminate\Database\Eloquent\Model;
 
 class PosItem extends Model
 {
-    protected $guarded = ['id'];
+    // Biar gampang update stok
+    protected $guarded = []; 
 
-    // Helper: Jika ada gambar pakai gambar itu, jika tidak pakai placeholder
-    public function getImageUrlAttribute()
+    // Relasi: Barang ini mungkin ada di dalam Paket Bundling
+    public function bundleItems()
     {
-        if ($this->image) {
-            return asset('storage/' . $this->image);
-        }
-        return 'https://placehold.co/400?text=No+Image'; // Gambar default sementara
+        return $this->hasMany(PosBundleItem::class, 'pos_item_id');
+    }
+
+    // Helper (Opsional): Cek status stok
+    public function getStockStatusAttribute()
+    {
+        if ($this->stock <= 0) return 'Habis';
+        if ($this->stock <= 5) return 'Menipis';
+        return 'Aman';
     }
 }
