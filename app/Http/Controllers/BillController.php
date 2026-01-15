@@ -17,7 +17,7 @@ class BillController extends Controller
      * =================================================================
      * 1. MONITORING & LAPORAN (INDEX)
      * =================================================================
-     * Menampilkan daftar tagihan, filter, dan ringkasan keuangan.
+     * Menampilkan daftar tagihan, filter (termasuk tanggal), dan ringkasan.
      */
     public function index(Request $request)
     {
@@ -28,24 +28,36 @@ class BillController extends Controller
         // Query Dasar
         $query = StudentBill::with('student')->latest();
 
-        // Terapkan Filter
+        // --- FILTERING ---
+        
+        // 1. Filter Kelas
         if ($request->class_name) {
             $query->whereHas('student', fn($q) => $q->where('class_name', $request->class_name));
         }
+        // 2. Filter Status
         if ($request->status) {
             $query->where('status', $request->status);
         }
+        // 3. Filter Tipe
         if ($request->type) {
             $query->where('type', $request->type);
         }
+        // 4. Filter Search (Nama Siswa / Tagihan)
         if ($request->search) {
             $query->where(function($q) use ($request) {
                 $q->where('name', 'like', '%' . $request->search . '%')
                   ->orWhereHas('student', fn($sq) => $sq->where('name', 'like', '%' . $request->search . '%'));
             });
         }
+        // 5. 🔥 FILTER TANGGAL (YANG TADINYA KELEWAT) 🔥
+        if ($request->start_date && $request->end_date) {
+            $query->whereBetween('created_at', [
+                $request->start_date . ' 00:00:00', 
+                $request->end_date . ' 23:59:59'
+            ]);
+        }
 
-        // Hitung Summary (Clone query agar filter tidak bentrok)
+        // Hitung Summary (Clone query agar angka summary sesuai filter yang aktif)
         $totalTagihan    = (clone $query)->sum('amount');
         $totalSudahBayar = (clone $query)->where('status', 'PAID')->sum('amount');
         $totalTunggakan  = (clone $query)->where('status', 'UNPAID')->sum('amount');
@@ -63,17 +75,11 @@ class BillController extends Controller
      * =================================================================
      * 2. HALAMAN GENERATOR TAGIHAN (CREATE)
      * =================================================================
-     * Menyiapkan data siswa, kelas, dan paket POS untuk form input.
      */
     public function create()
     {
-        // Ambil siswa aktif
         $students = Student::where('status', 'active')->orderBy('class_name')->orderBy('name')->get();
-        
-        // Ambil daftar kelas unik
         $classes = Student::select('class_name')->distinct()->orderBy('class_name')->pluck('class_name');
-        
-        // Ambil paket bundling aktif dari POS
         $bundles = PosBundle::where('is_active', true)->get(); 
         
         return view('bills.create', compact('students', 'bundles', 'classes'));
@@ -81,13 +87,12 @@ class BillController extends Controller
 
     /**
      * =================================================================
-     * 3. PROSES SIMPAN (STORE) - LOGIC INTI
+     * 3. PROSES SIMPAN (STORE)
      * =================================================================
-     * Menangani SPP (dengan tanggal jatuh tempo) dan Tagihan Barang (dengan item).
      */
     public function store(Request $request)
     {
-        // A. VALIDASI INPUT (DINAMIS BERDASARKAN TIPE)
+        // Validasi Input
         $rules = [
             'target_type' => 'required|in:student,class,all',
             'student_id' => 'required_if:target_type,student',
@@ -96,12 +101,10 @@ class BillController extends Controller
         ];
 
         if ($request->type == 'SPP') {
-            // Jika SPP: Wajib isi Bulan, Tahun, dan Nominal Manual
             $rules['spp_month'] = 'required|integer|min:1|max:12';
             $rules['spp_year'] = 'required|integer|min:2020';
             $rules['spp_amount'] = 'required|numeric|min:0';
         } else {
-            // Jika Reguler: Wajib isi Nama Tagihan dan Rincian Item
             $rules['name'] = 'required';
             $rules['item_names'] = 'required|array';
             $rules['item_prices'] = 'required|array';
@@ -113,9 +116,8 @@ class BillController extends Controller
         try {
             DB::beginTransaction();
 
-            // B. RESOLUSI TARGET SISWA
+            // Cari Target Siswa
             $studentsToBill = collect([]);
-
             if ($request->target_type == 'student') {
                 $studentsToBill = Student::where('id', $request->student_id)->get();
             } elseif ($request->target_type == 'class') {
@@ -125,59 +127,42 @@ class BillController extends Controller
             }
 
             if ($studentsToBill->isEmpty()) {
-                return back()->with('error', 'Tidak ada siswa yang ditemukan untuk target tersebut.');
+                return back()->with('error', 'Tidak ada siswa yang ditemukan.');
             }
 
-            // C. PROSES LOOPING GENERATE TAGIHAN
             $count = 0;
-            $bulanIndo = [
-                1 => 'Januari', 2 => 'Februari', 3 => 'Maret', 4 => 'April', 
-                5 => 'Mei', 6 => 'Juni', 7 => 'Juli', 8 => 'Agustus', 
-                9 => 'September', 10 => 'Oktober', 11 => 'November', 12 => 'Desember'
-            ];
+            $bulanIndo = [1=>'Januari', 2=>'Februari', 3=>'Maret', 4=>'April', 5=>'Mei', 6=>'Juni', 7=>'Juli', 8=>'Agustus', 9=>'September', 10=>'Oktober', 11=>'November', 12=>'Desember'];
 
             foreach ($studentsToBill as $student) {
                 
-                // --- SKENARIO 1: TAGIHAN TIPE SPP ---
+                // Logic Penamaan & Jatuh Tempo
                 if ($request->type == 'SPP') {
-                    // Generate Nama Otomatis: "SPP Agustus 2026"
                     $billName = "SPP " . $bulanIndo[$request->spp_month] . " " . $request->spp_year;
                     $totalAmount = $request->spp_amount;
-                    
                     $billMonth = $request->spp_month;
                     $billYear = $request->spp_year;
 
-                    // Setting Tanggal Jatuh Tempo (Due Date)
-                    // Diset otomatis tanggal 10 pada bulan & tahun tagihan tersebut
                     try {
                         $dueDate = Carbon::createFromDate($billYear, $billMonth, 10);
                     } catch (\Exception $e) {
-                        // Fallback jika tanggal tidak valid, set ke hari ini
                         $dueDate = now();
                     }
 
-                    // Cek Duplikasi SPP (Mencegah double billing di bulan yang sama)
                     $exists = StudentBill::where('student_id', $student->id)
                                          ->where('type', 'SPP')
                                          ->where('bill_month', $billMonth)
                                          ->where('bill_year', $billYear)
                                          ->exists();
-                } 
-                // --- SKENARIO 2: TAGIHAN TIPE REGULER (POS/Manual) ---
-                else {
+                } else {
                     $billName = $request->name;
-                    
-                    // Hitung Total dari Rincian Item
                     $totalAmount = 0;
                     foreach ($request->item_prices as $idx => $price) {
                         $totalAmount += ($price * $request->item_qtys[$idx]);
                     }
-                    
                     $billMonth = null;
                     $billYear = null;
-                    $dueDate = null; // Tagihan reguler tidak punya jatuh tempo spesifik (opsional)
+                    $dueDate = null;
 
-                    // Cek Duplikasi Nama (Mencegah double input nama sama persis yang belum lunas)
                     $exists = StudentBill::where('student_id', $student->id)
                                          ->where('name', $billName)
                                          ->where('type', $request->type)
@@ -185,23 +170,21 @@ class BillController extends Controller
                                          ->exists();
                 }
 
-                // D. EKSEKUSI INSERT DATABASE
                 if (!$exists) {
-                    // 1. Buat Header Tagihan
+                    // Create Bill Header
                     $bill = StudentBill::create([
                         'student_id' => $student->id,
                         'name' => $billName,
                         'type' => $request->type,
                         'amount' => $totalAmount,
                         'status' => 'UNPAID',
-                        'bill_month' => $billMonth, // Terisi jika SPP
-                        'bill_year' => $billYear,   // Terisi jika SPP
-                        'due_date' => $dueDate,     // Terisi jika SPP (Tgl 10)
+                        'bill_month' => $billMonth,
+                        'bill_year' => $billYear,
+                        'due_date' => $dueDate,
                     ]);
 
-                    // 2. Buat Rincian Item (BillItem)
+                    // Create Bill Items
                     if ($request->type == 'SPP') {
-                        // Jika SPP, buat 1 item dummy agar struktur data konsisten
                         BillItem::create([
                             'student_bill_id' => $bill->id,
                             'item_name' => $billName,
@@ -210,13 +193,11 @@ class BillController extends Controller
                             'subtotal' => $totalAmount
                         ]);
                     } else {
-                        // Jika Reguler, ambil dari input form dinamis
                         foreach ($request->item_names as $index => $itemName) {
                             $bundleId = $request->item_bundle_ids[$index] ?? null;
-                            
                             BillItem::create([
                                 'student_bill_id' => $bill->id,
-                                'pos_bundle_id' => $bundleId, // Terisi ID Paket POS jika ada
+                                'pos_bundle_id' => $bundleId,
                                 'item_name' => $itemName,
                                 'quantity' => $request->item_qtys[$index],
                                 'price' => $request->item_prices[$index],
@@ -239,9 +220,8 @@ class BillController extends Controller
 
     /**
      * =================================================================
-     * 4. PROSES BAYAR MANUAL (PAY) & INTEGRASI STOK
+     * 4. PROSES BAYAR (PAY)
      * =================================================================
-     * Mengubah status jadi PAID dan memotong stok jika tagihan berisi barang POS.
      */
     public function pay($id)
     {
@@ -254,29 +234,22 @@ class BillController extends Controller
 
             DB::beginTransaction();
 
-            // 1. Update Status Tagihan
+            // Update Status
             $bill->update([
                 'status' => 'PAID',
                 'payment_method' => 'CASH', 
                 'updated_at' => now(),
             ]);
 
-            // 2. Logic Potong Stok (Inventory Cut)
-            // Mengecek apakah ada item yang terhubung dengan Paket POS
+            // Potong Stok (Inventory Cut)
             if ($bill->items && $bill->items->count() > 0) {
                 foreach ($bill->items as $billItem) {
-                    
-                    // Cek jika item ini adalah Paket Bundling
                     if ($billItem->pos_bundle_id) {
                         $bundle = PosBundle::with('items')->find($billItem->pos_bundle_id);
-                        
                         if ($bundle) {
-                            // Loop isi paket (misal: Seragam, Topi, Dasi)
                             foreach ($bundle->items as $bundleItem) {
                                 $product = PosItem::find($bundleItem->pos_item_id);
-                                
                                 if ($product) {
-                                    // Kurangi Stok: Qty Beli x Qty per Paket
                                     $qtyOut = $billItem->quantity * $bundleItem->quantity;
                                     $product->decrement('stock', $qtyOut);
                                 }
@@ -299,20 +272,16 @@ class BillController extends Controller
      * =================================================================
      * 5. HAPUS TAGIHAN (DESTROY)
      * =================================================================
-     * Menghapus tagihan yang salah input, tapi melarang hapus yang sudah lunas.
      */
     public function destroy($id)
     {
         try {
             $bill = StudentBill::findOrFail($id);
-            
             if ($bill->status == 'PAID') {
-                return back()->with('error', 'Dilarang menghapus tagihan yang sudah LUNAS demi keamanan arsip keuangan.');
+                return back()->with('error', 'Dilarang menghapus tagihan yang sudah LUNAS.');
             }
-
-            $bill->delete(); // Otomatis hapus rincian item (Cascade)
+            $bill->delete();
             return back()->with('success', 'Tagihan berhasil dihapus.');
-
         } catch (\Exception $e) {
             return back()->with('error', 'Gagal menghapus: ' . $e->getMessage());
         }
@@ -326,10 +295,7 @@ class BillController extends Controller
     public function print($id)
     {
         $bill = StudentBill::with(['student', 'items'])->findOrFail($id);
-        
-        if ($bill->status == 'UNPAID') {
-            return back()->with('error', 'Tagihan belum lunas, tidak bisa cetak kwitansi!');
-        }
+        if ($bill->status == 'UNPAID') return back()->with('error', 'Tagihan belum lunas!');
         
         $terbilang = $this->terbilang($bill->amount) . ' Rupiah';
         return view('bills.print', compact('bill', 'terbilang'));
@@ -337,29 +303,29 @@ class BillController extends Controller
 
     /**
      * =================================================================
-     * 7. EXPORT CSV (FULL LOGIC)
+     * 7. EXPORT CSV (INDEX FILTERED)
      * =================================================================
-     * Mengunduh laporan tagihan sesuai filter yang sedang aktif.
      */
     public function export(Request $request)
     {
-        // Gunakan filter yang sama dengan index
+        // Copy logic filter persis seperti index()
         $query = StudentBill::with('student')->latest();
 
-        if ($request->class_name) {
-            $query->whereHas('student', fn($q) => $q->where('class_name', $request->class_name));
-        }
-        if ($request->status) {
-            $query->where('status', $request->status);
-        }
-        if ($request->type) {
-            $query->where('type', $request->type);
-        }
+        if ($request->class_name) $query->whereHas('student', fn($q) => $q->where('class_name', $request->class_name));
+        if ($request->status) $query->where('status', $request->status);
+        if ($request->type) $query->where('type', $request->type);
         if ($request->search) {
             $query->where(function($q) use ($request) {
                 $q->where('name', 'like', '%' . $request->search . '%')
                   ->orWhereHas('student', fn($sq) => $sq->where('name', 'like', '%' . $request->search . '%'));
             });
+        }
+        // 🔥 JANGAN LUPA FILTER TANGGAL DISINI JUGA 🔥
+        if ($request->start_date && $request->end_date) {
+            $query->whereBetween('created_at', [
+                $request->start_date . ' 00:00:00', 
+                $request->end_date . ' 23:59:59'
+            ]);
         }
 
         $bills = $query->get();
@@ -367,8 +333,6 @@ class BillController extends Controller
 
         return response()->streamDownload(function () use ($bills) {
             $handle = fopen('php://output', 'w');
-            
-            // Header CSV
             fputcsv($handle, ['No', 'Nama Siswa', 'NIS', 'Kelas', 'Jenis', 'Keterangan', 'Metode Bayar', 'Nominal (Rp)', 'Status', 'Tgl Jatuh Tempo', 'Tgl Update']);
 
             foreach ($bills as $k => $bill) {
@@ -390,11 +354,6 @@ class BillController extends Controller
         }, $filename);
     }
 
-    /**
-     * =================================================================
-     * 8. HELPER PRIVATE
-     * =================================================================
-     */
     private function terbilang($nilai) {
         $nilai = abs($nilai);
         $huruf = array("", "Satu", "Dua", "Tiga", "Empat", "Lima", "Enam", "Tujuh", "Delapan", "Sembilan", "Sepuluh", "Sebelas");
