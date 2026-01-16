@@ -294,11 +294,23 @@ class BillController extends Controller
      */
     public function print($id)
     {
+        // 1. Ambil data tagihan
         $bill = StudentBill::with(['student', 'items'])->findOrFail($id);
-        if ($bill->status == 'UNPAID') return back()->with('error', 'Tagihan belum lunas!');
         
+        // 2. Cek Status Lunas
+        if ($bill->status == 'UNPAID') {
+            return back()->with('error', 'Tagihan belum lunas, tidak bisa cetak kwitansi!');
+        }
+        
+        // 3. AMBIL DATA SEKOLAH (PENTING INI) 🔥
+        // Kita ambil data dari tabel school_settings biar dinamis
+        $school = DB::table('school_settings')->pluck('value', 'key');
+
+        // 4. Logic Terbilang
         $terbilang = $this->terbilang($bill->amount) . ' Rupiah';
-        return view('bills.print', compact('bill', 'terbilang'));
+
+        // 5. Kirim variable $school ke View
+        return view('bills.print', compact('bill', 'terbilang', 'school'));
     }
 
     /**

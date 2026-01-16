@@ -101,10 +101,37 @@
                     <svg class="w-4 h-4 transition-transform duration-200" :class="{'rotate-180': open}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
                 </button>
                 <div x-show="open" x-cloak class="mt-1 space-y-1 bg-[#0284c7]/30 rounded-xl p-1">
-                    <a href="{{ route('settings.integration') }}" class="flex items-center gap-3 px-3 py-2 rounded-lg text-xs transition {{ request()->routeIs('settings.integration') ? 'bg-white text-[#0ea5e9] font-bold shadow-sm' : 'text-blue-100 hover:text-white hover:bg-white/10' }}">
-                       <span>Integrasi Kesiswaan</span>
-                    </a>
-                </div>
+    <a href="{{ route('settings.integration') }}"
+       class="flex items-center gap-3 px-3 py-2 rounded-lg text-xs transition
+       {{ request()->routeIs('settings.integration')
+            ? 'bg-white text-[#0ea5e9] font-bold shadow-sm'
+            : 'text-blue-100 hover:text-white hover:bg-white/10' }}">
+
+        <!-- Icon Integrasi / Link -->
+        <svg class="w-4 h-4"
+             fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M13.828 10.172a4 4 0 010 5.656m-3.656-5.656a4 4 0 010 5.656M8 12h8"/>
+        </svg>
+
+        <span>Integrasi Kesiswaan</span>
+    </a>
+</div>
+                <div x-show="open" x-cloak class="mt-1 space-y-1 bg-[#0284c7]/30 rounded-xl p-1">
+    <a href="{{ route('school.settings') }}"
+       class="flex items-center gap-3 px-3 py-2 rounded-lg text-xs transition
+       {{ request()->routeIs('school.settings')
+            ? 'bg-white text-[#0ea5e9] font-bold shadow-sm'
+            : 'text-blue-100 hover:text-white hover:bg-white/10' }}">
+
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
+        </svg>
+
+        <span>Identitas Sekolah</span>
+    </a>
+</div>
             </div>
 
             <a href="{{ route('profile.edit') }}" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition font-medium {{ request()->routeIs('profile.*') ? 'bg-white text-[#0ea5e9] shadow-md' : 'text-blue-50 hover:bg-white/10 hover:text-white' }}">
