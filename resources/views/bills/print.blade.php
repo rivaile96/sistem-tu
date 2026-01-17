@@ -247,7 +247,19 @@
         .signature-role {
             font-weight: bold;
             font-size: 12px;
-            margin-bottom: 60px; /* Space for TTD */
+            margin-bottom: 5px; /* Jarak ke gambar TTD */
+        }
+        .signature-img-container {
+            height: 80px; /* Tinggi Fix buat TTD */
+            display: flex;
+            align-items: flex-end; /* TTD nempel ke bawah */
+            justify-content: center;
+            margin-bottom: 5px;
+        }
+        .signature-img {
+            max-height: 80px;
+            max-width: 150px;
+            object-fit: contain;
         }
         .signature-name {
             font-weight: bold;
@@ -316,20 +328,24 @@
             </div>
         </div>
 
-        <div class="status-stamp status-paid">LUNAS</div>
+        @if($bill->status == 'PAID' || $bill->status == 'LUNAS')
+            <div class="status-stamp status-paid">LUNAS</div>
+        @else
+            <div class="status-stamp status-unpaid">BELUM LUNAS</div>
+        @endif
 
         <div class="info-section">
             <div class="info-box">
                 <span class="info-label">Diterima Dari (Siswa)</span>
                 <div class="info-value">{{ $bill->student->name }}</div>
                 <div class="info-sub">NIS: {{ $bill->student->nis }}</div>
-                <div class="info-sub">Kelas: {{ $bill->student->class_name }}</div>
+                <div class="info-sub">Kelas: {{ $bill->student->class_name ?? '-' }}</div>
             </div>
 
             <div class="info-box" style="text-align: right;">
                 <span class="info-label">Detail Pembayaran</span>
-                <div class="info-value">Tgl. Bayar: {{ \Carbon\Carbon::parse($bill->updated_at)->translatedFormat('d F Y') }}</div>
-                <div class="info-sub">Metode: Tunai / Transfer</div>
+                <div class="info-value">Tgl. Bayar: {{ $bill->updated_at ? \Carbon\Carbon::parse($bill->updated_at)->translatedFormat('d F Y') : date('d F Y') }}</div>
+                <div class="info-sub">Metode: <span style="text-transform: uppercase;">{{ $bill->payment_method ?? 'Tunai' }}</span></div>
             </div>
         </div>
 
@@ -343,18 +359,29 @@
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach($bill->items as $index => $item)
+                    @if(isset($bill->items) && count($bill->items) > 0)
+                        @foreach($bill->items as $index => $item)
+                        <tr>
+                            <td>{{ $index + 1 }}</td>
+                            <td>
+                                <strong style="color:#0084ff">{{ $item->item_name }}</strong>
+                                @if($item->quantity > 1) 
+                                    <br><span style="font-size:11px; color:#777;">{{ $item->quantity }} x @ {{ number_format($item->amount, 0, ',', '.') }}</span>
+                                @endif
+                            </td>
+                            <td class="text-right">Rp {{ number_format($item->subtotal, 0, ',', '.') }}</td>
+                        </tr>
+                        @endforeach
+                    @else
                     <tr>
-                        <td>{{ $index + 1 }}</td>
-                        <td>
-                            <strong style="color:#0084ff">{{ $item->item_name }}</strong>
-                            @if($item->quantity > 1) 
-                                <br><span style="font-size:11px; color:#777;">{{ $item->quantity }} x @ {{ number_format($item->amount, 0, ',', '.') }}</span>
-                            @endif
-                        </td>
-                        <td class="text-right">Rp {{ number_format($item->subtotal, 0, ',', '.') }}</td>
-                    </tr>
-                    @endforeach
+                            <td>1</td>
+                            <td>
+                                <strong style="color:#0084ff">{{ $bill->name }}</strong>
+                                <br><span style="font-size:11px; color:#777;">Pembayaran Sekolah</span>
+                            </td>
+                            <td class="text-right">Rp {{ number_format($bill->amount, 0, ',', '.') }}</td>
+                        </tr>
+                    @endif
                 </tbody>
             </table>
         </div>
@@ -373,7 +400,7 @@
         </div>
 
         <div class="terbilang-box">
-            <strong>Terbilang:</strong> <span style="text-transform: capitalize; background: #eee; padding: 2px 5px; border-radius: 3px;"># {{ $terbilang }} Rupiah #</span>
+            <strong>Terbilang:</strong> <span style="text-transform: capitalize; background: #eee; padding: 2px 5px; border-radius: 3px;"># {{ $terbilang ?? 'Nominal Rupiah' }} #</span>
         </div>
 
         <div class="footer">
@@ -385,6 +412,14 @@
             <div class="signature-box">
                 <div class="signature-date">Jakarta, {{ date('d F Y') }}</div>
                 <div class="signature-role">Bendahara / Ka. TU</div>
+                
+                <div class="signature-img-container">
+                    @if(isset($school['school_signature']))
+                        <img src="{{ asset('storage/'.$school['school_signature']) }}" class="signature-img" alt="Tanda Tangan">
+                    @else
+                        <div style="height: 60px;"></div> 
+                    @endif
+                </div>
                 
                 <div class="signature-name">{{ $school['head_of_admin'] ?? 'Admin TU' }}</div>
             </div>

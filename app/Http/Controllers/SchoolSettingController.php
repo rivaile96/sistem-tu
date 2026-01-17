@@ -20,15 +20,18 @@ class SchoolSettingController extends Controller
     // Menyimpan Perubahan
     public function update(Request $request)
     {
+        // 1. VALIDASI INPUT
         $request->validate([
-            'school_name' => 'required|string|max:255',
-            'school_address' => 'required|string',
-            'school_logo' => 'nullable|image|max:2048', // Max 2MB, Format Gambar
+            'school_name'      => 'required|string|max:255',
+            'school_address'   => 'required|string',
+            'school_logo'      => 'nullable|image|max:2048', // Max 2MB, Format Gambar
+            'school_signature' => 'nullable|image|max:2048', // Validasi Tambahan untuk TTD
         ]);
 
-        // 1. Simpan Data Teks (Nama, Alamat, Telp, TTD)
-        // Kita ambil semua inputan KECUALI token dan file logo
-        $data = $request->except(['_token', 'school_logo']);
+        // 2. SIMPAN DATA TEKS (Nama, Alamat, Telp, Nama Bendahara)
+        // PENTING: Kita harus kecualikan file 'school_logo' DAN 'school_signature'
+        // agar sistem tidak mencoba menyimpannya sebagai teks (yang bikin error).
+        $data = $request->except(['_token', 'school_logo', 'school_signature']);
         
         foreach ($data as $key => $value) {
             DB::table('school_settings')->updateOrInsert(
@@ -37,7 +40,7 @@ class SchoolSettingController extends Controller
             );
         }
 
-        // 2. Simpan Upload Logo (Revised & Fixed)
+        // 3. LOGIC UPLOAD LOGO (Existing / Kode Lama Kamu)
         if ($request->hasFile('school_logo')) {
             
             // A. Hapus logo lama jika ada (Biar storage tidak penuh)
@@ -48,18 +51,37 @@ class SchoolSettingController extends Controller
                 Storage::disk('public')->delete($oldLogo);
             }
 
-            // B. Upload logo baru
-            // Parameter kedua 'public' memastikan file masuk ke storage/app/public/logo
-            // Hasil $path nanti otomatis bersih, contoh: "logo/namafileacak.jpg"
+            // B. Upload logo baru ke folder 'logo'
             $path = $request->file('school_logo')->store('logo', 'public');
             
-            // C. Simpan nama file baru ke Database
+            // C. Simpan path baru ke Database
             DB::table('school_settings')->updateOrInsert(
                 ['key' => 'school_logo'],
                 ['value' => $path, 'updated_at' => now()]
             );
         }
 
-        return back()->with('success', 'Identitas sekolah berhasil diperbarui!');
+        // 4. LOGIC UPLOAD TANDA TANGAN (BARU 🔥)
+        // Logikanya sama persis dengan upload logo, tapi foldernya beda biar rapi.
+        if ($request->hasFile('school_signature')) {
+            
+            // A. Hapus TTD lama jika ada
+            $oldSig = DB::table('school_settings')->where('key', 'school_signature')->value('value');
+            
+            if ($oldSig && Storage::disk('public')->exists($oldSig)) {
+                Storage::disk('public')->delete($oldSig);
+            }
+
+            // B. Upload TTD baru ke folder 'signature'
+            $pathSig = $request->file('school_signature')->store('signature', 'public');
+            
+            // C. Simpan path TTD ke Database
+            DB::table('school_settings')->updateOrInsert(
+                ['key' => 'school_signature'],
+                ['value' => $pathSig, 'updated_at' => now()]
+            );
+        }
+
+        return back()->with('success', 'Identitas sekolah dan tanda tangan berhasil diperbarui!');
     }
 }
