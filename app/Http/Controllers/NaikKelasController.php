@@ -52,8 +52,14 @@ class NaikKelasController extends Controller
         // Ambil semua kelas aktif untuk dropdown tujuan (manual override)
         $semuaKelas = Kelas::aktif()->orderBy('tingkat')->orderBy('nama_kelas')->get();
 
+        // Statistik jumlah siswa aktif per kelas (untuk tabel ringkasan di view)
+        $statPerKelas = $kelasAktif->map(fn($k) => (object)[
+            'class_name' => $k->nama_kelas,
+            'jumlah'     => $k->active_students_count,
+        ])->filter(fn($s) => $s->jumlah > 0)->values();
+
         return view('students.naik-kelas.index', compact(
-            'kelasAktif', 'mappingOtomatis', 'semuaKelas', 'jenjang', 'tingkatMax'
+            'kelasAktif', 'mappingOtomatis', 'semuaKelas', 'statPerKelas', 'jenjang', 'tingkatMax'
         ));
     }
 
@@ -142,8 +148,9 @@ class NaikKelasController extends Controller
         $totalNaik        = 0;
         $totalLulus       = 0;
         $totalDilewati    = 0;
+        $userId           = Auth::id(); // capture before closure
 
-        DB::transaction(function () use ($mappings, $catatanTambahan, &$totalNaik, &$totalLulus, &$totalDilewati) {
+        DB::transaction(function () use ($mappings, $catatanTambahan, $userId, &$totalNaik, &$totalLulus, &$totalDilewati) {
             foreach ($mappings as $mapping) {
                 $kelasAsal   = Kelas::find($mapping['kelas_asal_id']);
                 $action      = $mapping['action'];

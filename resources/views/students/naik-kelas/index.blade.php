@@ -135,11 +135,11 @@
                         <div class="mapping-row flex flex-col sm:flex-row items-start sm:items-center gap-3" data-index="0">
                             <div class="flex-1 min-w-0">
                                 <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Kelas Asal</label>
-                                <select name="mappings[0][kelas_asal]"
+                                <select name="mappings[0][kelas_asal_id]" data-role="asal"
                                         class="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-[#0284c7] focus:ring-2 focus:ring-[#0284c7]/20 bg-white text-sm transition-all duration-200">
                                     <option value="">-- Pilih Kelas Asal --</option>
                                     @foreach($kelasAktif as $kelas)
-                                        <option value="{{ $kelas }}">{{ $kelas }}</option>
+                                        <option value="{{ $kelas->id }}">{{ $kelas->nama_kelas }}</option>
                                     @endforeach
                                 </select>
                             </div>
@@ -154,11 +154,17 @@
 
                             <div class="flex-1 min-w-0">
                                 <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Kelas Tujuan</label>
-                                <input type="text"
-                                       name="mappings[0][kelas_tujuan]"
-                                       placeholder="Contoh: XI IPA 1"
-                                       class="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-[#0284c7] focus:ring-2 focus:ring-[#0284c7]/20 bg-white text-sm transition-all duration-200">
+                                <select name="mappings[0][kelas_tujuan_id]" data-role="tujuan"
+                                        class="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-[#0284c7] focus:ring-2 focus:ring-[#0284c7]/20 bg-white text-sm transition-all duration-200">
+                                    <option value="">-- Lulus / Tidak Dinaikkan --</option>
+                                    @foreach($semuaKelas as $kt)
+                                        <option value="{{ $kt->id }}">{{ $kt->nama_kelas }}</option>
+                                    @endforeach
+                                </select>
                             </div>
+
+                            {{-- Action: otomatis 'naik'; bisa di-override jika tingkat akhir --}}
+                            <input type="hidden" name="mappings[0][action]" data-role="action" value="naik">
 
                             <!-- Placeholder tombol hapus agar layout sejajar -->
                             <div class="flex-shrink-0 pt-5 w-10 hidden sm:block"></div>
@@ -196,15 +202,25 @@
 
     <script>
     (function () {
-        const kelasAktif = @json($kelasAktif);
+        const kelasAktif = @json($kelasAktif->map(fn($k) => ['id' => $k->id, 'nama_kelas' => $k->nama_kelas]));
+        const semuaKelas  = @json($semuaKelas->map(fn($k) => ['id' => $k->id, 'nama_kelas' => $k->nama_kelas]));
         const container  = document.getElementById('mappings-container');
         const addBtn     = document.getElementById('add-mapping-btn');
 
-        function buildOptionHTML(selectedValue) {
+        function buildOptionHTML(selectedId) {
             let opts = '<option value="">-- Pilih Kelas Asal --</option>';
             kelasAktif.forEach(function (kelas) {
-                const sel = kelas === selectedValue ? ' selected' : '';
-                opts += '<option value="' + escapeHtml(kelas) + '"' + sel + '>' + escapeHtml(kelas) + '</option>';
+                const sel = kelas.id == selectedId ? ' selected' : '';
+                opts += '<option value="' + kelas.id + '"' + sel + '>' + escapeHtml(kelas.nama_kelas) + '</option>';
+            });
+            return opts;
+        }
+
+        function buildTujuanHTML(selectedId) {
+            let opts = '<option value="">-- Lulus / Tidak Dinaikkan --</option>';
+            semuaKelas.forEach(function (kelas) {
+                const sel = kelas.id == selectedId ? ' selected' : '';
+                opts += '<option value="' + kelas.id + '"' + sel + '>' + escapeHtml(kelas.nama_kelas) + '</option>';
             });
             return opts;
         }
@@ -221,8 +237,10 @@
             const rows = container.querySelectorAll('.mapping-row');
             rows.forEach(function (row, i) {
                 row.dataset.index = i;
-                row.querySelector('select').name         = 'mappings[' + i + '][kelas_asal]';
-                row.querySelector('input[type="text"]').name = 'mappings[' + i + '][kelas_tujuan]';
+                row.querySelector('select[data-role="asal"]').name  = 'mappings[' + i + '][kelas_asal_id]';
+                row.querySelector('select[data-role="tujuan"]').name = 'mappings[' + i + '][kelas_tujuan_id]';
+                const actionEl = row.querySelector('input[data-role="action"]');
+                if (actionEl) actionEl.name = 'mappings[' + i + '][action]';
             });
         }
 
@@ -247,9 +265,9 @@
                 </div>
                 <div class="flex-1 min-w-0">
                     <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Kelas Tujuan</label>
-                    <input type="text"
-                           placeholder="Contoh: XI IPA 1"
-                           class="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-[#0284c7] focus:ring-2 focus:ring-[#0284c7]/20 bg-white text-sm transition-all duration-200">
+                    <select data-role="tujuan" class="w-full px-4 py-2.5 rounded-xl border border-gray-200 focus:border-[#0284c7] focus:ring-2 focus:ring-[#0284c7]/20 bg-white text-sm transition-all duration-200">
+                        \${buildTujuanHTML('')}
+                    </select>
                 </div>
                 <div class="flex-shrink-0 pt-5">
                     <button type="button"
