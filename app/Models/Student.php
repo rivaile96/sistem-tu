@@ -56,6 +56,11 @@ class Student extends Model
         return $this->belongsTo(\App\Models\User::class, 'status_changed_by');
     }
 
+    public function kelas()
+    {
+        return $this->belongsTo(\App\Models\Kelas::class, 'kelas_id');
+    }
+
     // ==========================================
     // SCOPES
     // ==========================================

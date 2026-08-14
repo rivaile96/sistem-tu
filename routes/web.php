@@ -17,6 +17,7 @@ use App\Http\Controllers\IntegrationController;    // Integrasi PPDB
 use App\Http\Controllers\SppController;            // (Legacy) SPP Lama
 use App\Http\Controllers\SchoolSettingController;  // Pengaturan Sekolah
 use App\Http\Controllers\NaikKelasController;       // Naik Kelas Massal
+use App\Http\Controllers\KelasController;           // Master Kelas
 
 /*
 |--------------------------------------------------------------------------
@@ -73,6 +74,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/preview', [NaikKelasController::class, 'preview'])->name('preview');
         Route::post('/eksekusi', [NaikKelasController::class, 'eksekusi'])->name('eksekusi');
     });
+
+    // MASTER KELAS
+    Route::post('kelas/update-jenjang', [KelasController::class, 'updateJenjang'])->name('kelas.update-jenjang');
+    Route::resource('kelas', KelasController::class)->except(['show']);
 
     // 3. BILLING / TAGIHAN (SYSTEM BARU)
     Route::controller(BillController::class)->prefix('bills')->name('bills.')->group(function () {
