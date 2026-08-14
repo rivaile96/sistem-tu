@@ -24,6 +24,12 @@ class StudentStatusLog extends Model
         return $this->belongsTo(\App\Models\User::class, 'diubah_oleh');
     }
 
+    // Alias untuk kompatibilitas view
+    public function statusChangedBy()
+    {
+        return $this->belongsTo(\App\Models\User::class, 'diubah_oleh');
+    }
+
     public function getStatusLamaLabelAttribute(): string
     {
         return self::statusLabel($this->status_lama);

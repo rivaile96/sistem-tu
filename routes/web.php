@@ -19,6 +19,7 @@ use App\Http\Controllers\SchoolSettingController;  // Pengaturan Sekolah
 use App\Http\Controllers\NaikKelasController;       // Naik Kelas Massal
 use App\Http\Controllers\RombelController;           // Rombel & Tahun Ajaran
 use App\Http\Controllers\KelasController;           // Master Kelas
+use App\Http\Controllers\PPDBController;            // PPDB Flow
 
 /*
 |--------------------------------------------------------------------------
@@ -143,6 +144,20 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::controller(SchoolSettingController::class)->group(function() {
         Route::get('/school-settings', 'index')->name('school.settings'); // Halaman Form
         Route::post('/school-settings', 'update')->name('school.update'); // Proses Simpan
+    });
+
+    // 9. PPDB FLOW
+    Route::prefix('ppdb')->name('ppdb.')->group(function () {
+        Route::get('/', [PPDBController::class, 'index'])->name('index');
+        Route::get('/daftar', [PPDBController::class, 'create'])->name('create');
+        Route::post('/daftar', [PPDBController::class, 'store'])->name('store');
+        Route::get('/konversi', [PPDBController::class, 'konversiIndex'])->name('konversi');
+        Route::post('/konversi', [PPDBController::class, 'konversiEksekusi'])->name('konversi.eksekusi');
+        Route::get('/{id}', [PPDBController::class, 'show'])->name('show');
+        Route::get('/{id}/edit', [PPDBController::class, 'edit'])->name('edit');
+        Route::put('/{id}', [PPDBController::class, 'update'])->name('update');
+        Route::post('/{id}/seleksi', [PPDBController::class, 'seleksi'])->name('seleksi');
+        Route::delete('/{id}', [PPDBController::class, 'destroy'])->name('destroy');
     });
 
     // 7. LEGACY SPP (Sistem Lama - Opsional)
