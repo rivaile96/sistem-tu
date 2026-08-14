@@ -17,13 +17,20 @@
                 </div>
                 
                 <div class="flex items-center gap-2">
-                    <a href="{{ route('students.import') }}" 
-                       class="flex items-center gap-2 bg-white border border-gray-200 text-gray-700 px-4 py-2.5 rounded-xl hover:border-[#0284c7]/50 hover:shadow-md transition-all duration-300 font-medium shadow-sm text-sm">
-                        <svg class="w-4 h-4 text-[#0284c7]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
-                        </svg>
-                        <span>Import CSV</span>
-                    </a>
+                   <a href="{{ route('naik-kelas.index') }}"
+                      class="flex items-center gap-2 bg-white border border-amber-300 text-amber-700 px-4 py-2.5 rounded-xl hover:border-amber-400 hover:shadow-md transition-all duration-300 font-medium shadow-sm text-sm">
+                       <svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"></path>
+                       </svg>
+                       <span>Naik Kelas</span>
+                   </a>
+                   <a href="{{ route('students.import') }}" 
+                      class="flex items-center gap-2 bg-white border border-gray-200 text-gray-700 px-4 py-2.5 rounded-xl hover:border-[#0284c7]/50 hover:shadow-md transition-all duration-300 font-medium shadow-sm text-sm">
+                       <svg class="w-4 h-4 text-[#0284c7]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
+                       </svg>
+                       <span>Import CSV</span>
+                   </a>
                     <a href="{{ route('students.create') }}" 
                        class="flex items-center gap-2 bg-[#0284c7] text-white px-4 py-2.5 rounded-xl hover:bg-[#0369a1] transition-all duration-300 font-medium shadow-sm text-sm">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

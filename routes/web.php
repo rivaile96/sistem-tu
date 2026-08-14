@@ -16,6 +16,7 @@ use App\Http\Controllers\PosReportController;      // Laporan POS
 use App\Http\Controllers\IntegrationController;    // Integrasi PPDB
 use App\Http\Controllers\SppController;            // (Legacy) SPP Lama
 use App\Http\Controllers\SchoolSettingController;  // Pengaturan Sekolah
+use App\Http\Controllers\NaikKelasController;       // Naik Kelas Massal
 
 /*
 |--------------------------------------------------------------------------
@@ -64,6 +65,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/{id}/status', [StudentController::class, 'ubahStatus'])->name('ubah-status.process');
         // Finance detail (backward compat)
         Route::get('/{id}/finance', [StudentController::class, 'show'])->name('finance');
+    });
+
+    // NAIK KELAS MASSAL
+    Route::prefix('naik-kelas')->name('naik-kelas.')->group(function () {
+        Route::get('/', [NaikKelasController::class, 'index'])->name('index');
+        Route::post('/preview', [NaikKelasController::class, 'preview'])->name('preview');
+        Route::post('/eksekusi', [NaikKelasController::class, 'eksekusi'])->name('eksekusi');
     });
 
     // 3. BILLING / TAGIHAN (SYSTEM BARU)
