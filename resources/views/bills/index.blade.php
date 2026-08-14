@@ -83,7 +83,7 @@
                     <div class="relative mt-6 pt-6 border-t border-slate-100">
                         <div class="flex items-center gap-2 text-xs text-slate-400">
                             <svg class="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
-                            {{ number_format(($totalSudahBayar/$totalTagihan)*100, 0) }}% dari total
+                            {{ $totalTagihan > 0 ? number_format(($totalSudahBayar/$totalTagihan)*100, 0) : 0 }}% dari total
                         </div>
                     </div>
                 </div>

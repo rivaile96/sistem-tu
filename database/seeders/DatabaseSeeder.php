@@ -13,18 +13,20 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         // 1. Bikin User Login (Admin)
-        User::factory()->create([
-            'name' => 'Admin TU',
-            'email' => 'admin@sekolah.com',
-            'password' => bcrypt('password'),
-        ]);
+        User::firstOrCreate(
+            ['email' => 'admin@sekolah.com'],
+            [
+                'name' => 'Admin TU',
+                'password' => bcrypt('password'),
+                'email_verified_at' => now(),
+            ]
+        );
 
         // 2. Bikin Siswa
-        $student = Student::create([
-            'nis' => '1001',
-            'name' => 'Kelvino',
-            'class_name' => 'XII-RPL'
-        ]);
+        $student = Student::firstOrCreate(
+            ['nis' => '1001'],
+            ['name' => 'Kelvino', 'class_name' => 'XII-RPL']
+        );
 
         // 3. Bikin Tagihan SPP
         SppBill::create([

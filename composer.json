@@ -13,6 +13,7 @@
         "laravel/framework": "^12.0",
         "laravel/sanctum": "^4.0",
         "laravel/tinker": "^2.10.1",
+        "league/csv": "*",
         "midtrans/midtrans-php": "^2.6"
     },
     "require-dev": {

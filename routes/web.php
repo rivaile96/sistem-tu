@@ -51,7 +51,19 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // 2. MANAJEMEN SISWA
     Route::prefix('students')->name('students.')->group(function () {
         Route::get('/', [StudentController::class, 'index'])->name('index');
-        Route::get('/{id}/finance', [StudentController::class, 'show'])->name('show');
+        Route::get('/create', [StudentController::class, 'create'])->name('create');
+        Route::post('/', [StudentController::class, 'store'])->name('store');
+        Route::get('/import', [StudentController::class, 'importForm'])->name('import');
+        Route::post('/import', [StudentController::class, 'importCsv'])->name('import.process');
+        Route::get('/template', [StudentController::class, 'downloadTemplate'])->name('template');
+        Route::get('/{id}', [StudentController::class, 'show'])->name('show');
+        Route::get('/{id}/edit', [StudentController::class, 'edit'])->name('edit');
+        Route::put('/{id}', [StudentController::class, 'update'])->name('update');
+        Route::delete('/{id}', [StudentController::class, 'destroy'])->name('destroy');
+        Route::get('/{id}/status', [StudentController::class, 'formUbahStatus'])->name('ubah-status');
+        Route::post('/{id}/status', [StudentController::class, 'ubahStatus'])->name('ubah-status.process');
+        // Finance detail (backward compat)
+        Route::get('/{id}/finance', [StudentController::class, 'show'])->name('finance');
     });
 
     // 3. BILLING / TAGIHAN (SYSTEM BARU)

@@ -16,22 +16,31 @@
                     <p class="text-gray-600 ml-12">Pusat data tagihan SPP, Uang Gedung, dan Transaksi Siswa.</p>
                 </div>
                 
-                <a href="{{ route('settings.integration') }}" 
-                   class="group flex items-center gap-3 bg-gradient-to-r from-white to-gray-50 border border-gray-200 text-gray-700 px-5 py-3 rounded-xl hover:border-[#0284c7]/50 hover:shadow-md transition-all duration-300 font-medium shadow-sm">
-                    <svg class="w-5 h-5 text-[#0284c7] group-hover:animate-spin-slow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-                    </svg>
-                    <span>Sync Data Kesiswaan</span>
-                </a>
+                <div class="flex items-center gap-2">
+                    <a href="{{ route('students.import') }}" 
+                       class="flex items-center gap-2 bg-white border border-gray-200 text-gray-700 px-4 py-2.5 rounded-xl hover:border-[#0284c7]/50 hover:shadow-md transition-all duration-300 font-medium shadow-sm text-sm">
+                        <svg class="w-4 h-4 text-[#0284c7]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
+                        </svg>
+                        <span>Import CSV</span>
+                    </a>
+                    <a href="{{ route('students.create') }}" 
+                       class="flex items-center gap-2 bg-[#0284c7] text-white px-4 py-2.5 rounded-xl hover:bg-[#0369a1] transition-all duration-300 font-medium shadow-sm text-sm">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                        </svg>
+                        <span>Tambah Siswa</span>
+                    </a>
+                </div>
             </div>
 
             <!-- Stats Cards -->
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                 <div class="bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-xl p-4">
                     <div class="flex items-center justify-between">
                         <div>
                             <p class="text-sm text-blue-800 font-medium">Total Siswa</p>
-                            <p class="text-2xl font-bold text-[#0284c7] mt-1">{{ $students->total() }}</p>
+                            <p class="text-2xl font-bold text-[#0284c7] mt-1">{{ $stats['total'] }}</p>
                         </div>
                         <div class="p-3 bg-[#0284c7]/10 rounded-lg">
                             <svg class="w-6 h-6 text-[#0284c7]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -40,12 +49,12 @@
                         </div>
                     </div>
                 </div>
-                
+
                 <div class="bg-gradient-to-br from-emerald-50 to-emerald-100 border border-emerald-200 rounded-xl p-4">
                     <div class="flex items-center justify-between">
                         <div>
                             <p class="text-sm text-emerald-800 font-medium">Siswa Aktif</p>
-                            <p class="text-2xl font-bold text-emerald-600 mt-1">{{ $students->total() }}</p>
+                            <p class="text-2xl font-bold text-emerald-600 mt-1">{{ $stats['aktif'] }}</p>
                         </div>
                         <div class="p-3 bg-emerald-500/10 rounded-lg">
                             <svg class="w-6 h-6 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -54,20 +63,35 @@
                         </div>
                     </div>
                 </div>
-                
-                <div class="bg-gradient-to-br from-amber-50 to-amber-100 border border-amber-200 rounded-xl p-4">
+
+                <div class="bg-gradient-to-br from-red-50 to-red-100 border border-red-200 rounded-xl p-4">
                     <div class="flex items-center justify-between">
                         <div>
-                            <p class="text-sm text-amber-800 font-medium">Kelas Tersedia</p>
-                            <p class="text-2xl font-bold text-amber-600 mt-1">{{ count($classes) }}</p>
+                            <p class="text-sm text-red-800 font-medium">Tidak Aktif</p>
+                            <p class="text-2xl font-bold text-red-600 mt-1">{{ $stats['tidak_aktif'] }}</p>
                         </div>
-                        <div class="p-3 bg-amber-500/10 rounded-lg">
-                            <svg class="w-6 h-6 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path>
+                        <div class="p-3 bg-red-500/10 rounded-lg">
+                            <svg class="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"></path>
                             </svg>
                         </div>
                     </div>
                 </div>
+
+                <div class="bg-gradient-to-br from-yellow-50 to-yellow-100 border border-yellow-200 rounded-xl p-4">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-sm text-yellow-800 font-medium">Calon Siswa</p>
+                            <p class="text-2xl font-bold text-yellow-600 mt-1">{{ $stats['calon'] }}</p>
+                        </div>
+                        <div class="p-3 bg-yellow-500/10 rounded-lg">
+                            <svg class="w-6 h-6 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+                
             </div>
         </div>
 
@@ -95,6 +119,27 @@
                             </svg>
                         </div>
                     </div>
+                </div>
+
+                <!-- Status Filter -->
+                <div class="w-full lg:w-48">
+                    <label class="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+                        <svg class="w-4 h-4 text-[#0284c7]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                        Filter Status
+                    </label>
+                    <select name="status" onchange="this.form.submit()"
+                            class="w-full px-4 py-3.5 rounded-xl border border-gray-200 focus:border-[#0284c7] focus:ring-2 focus:ring-[#0284c7]/20 bg-white appearance-none transition-all duration-300">
+                        <option value="">-- Semua Status --</option>
+                        <option value="active" {{ request('status') == 'active' ? 'selected' : '' }}>Siswa Aktif</option>
+                        <option value="calon_siswa" {{ request('status') == 'calon_siswa' ? 'selected' : '' }}>Calon Siswa</option>
+                        <option value="pindah_masuk" {{ request('status') == 'pindah_masuk' ? 'selected' : '' }}>Pindah Masuk</option>
+                        <option value="pindah_keluar" {{ request('status') == 'pindah_keluar' ? 'selected' : '' }}>Pindah Keluar</option>
+                        <option value="keluar" {{ request('status') == 'keluar' ? 'selected' : '' }}>Keluar / DO</option>
+                        <option value="graduated" {{ request('status') == 'graduated' ? 'selected' : '' }}>Lulus</option>
+                        <option value="alumni" {{ request('status') == 'alumni' ? 'selected' : '' }}>Alumni</option>
+                    </select>
                 </div>
 
                 <!-- Class Filter -->

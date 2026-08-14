@@ -5,98 +5,117 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Notifications\Notifiable;
-use Laravel\Sanctum\HasApiTokens; // <--- PENTING: Untuk Login API Android
+use Laravel\Sanctum\HasApiTokens;
 
 class Student extends Model
 {
     use HasApiTokens, HasFactory, Notifiable;
 
-    // Nama tabel di database
     protected $table = 'students';
-
-    // Kolom yang aman diisi massal (semua kecuali ID)
     protected $guarded = ['id'];
 
-    // Casting tipe data otomatis
     protected $casts = [
-        'created_at' => 'datetime',
-        'updated_at' => 'datetime',
+        'birth_date'         => 'date',
+        'status_changed_at'  => 'datetime',
+        'created_at'         => 'datetime',
+        'updated_at'         => 'datetime',
+    ];
+
+    // Status yang tersedia
+    const STATUSES = [
+        'active'        => 'Siswa Aktif',
+        'pindah_masuk'  => 'Pindah Masuk',
+        'pindah_keluar' => 'Pindah Keluar',
+        'keluar'        => 'Keluar / DO',
+        'graduated'     => 'Lulus',
+        'alumni'        => 'Alumni',
+        'calon_siswa'   => 'Calon Siswa',
     ];
 
     // ==========================================
-    // 🔗 RELASI (RELATIONSHIPS)
+    // RELASI
     // ==========================================
 
-    /**
-     * Relasi ke Tagihan Sekolah (SPP, Gedung, Seragam, dll)
-     * Mengambil data terbaru dulu (latest)
-     */
     public function bills()
     {
         return $this->hasMany(StudentBill::class, 'student_id')->latest();
     }
 
-    /**
-     * Relasi ke Riwayat Jajan Kantin (POS)
-     */
     public function posOrders()
     {
         return $this->hasMany(PosOrder::class, 'student_id')->latest();
     }
 
+    public function statusLogs()
+    {
+        return $this->hasMany(StudentStatusLog::class, 'student_id')->latest();
+    }
+
+    public function statusChangedBy()
+    {
+        return $this->belongsTo(\App\Models\User::class, 'status_changed_by');
+    }
+
     // ==========================================
-    // ⚡ AKSESOR PINTAR (ACCESSORS)
+    // SCOPES
     // ==========================================
 
-    /**
-     * Hitung Total Hutang Otomatis
-     * Cara panggil: $student->total_debt
-     */
+    public function scopeAktif($query)
+    {
+        return $query->where('status', 'active');
+    }
+
+    public function scopeByStatus($query, string $status)
+    {
+        return $query->where('status', $status);
+    }
+
+    // ==========================================
+    // ACCESSORS
+    // ==========================================
+
     public function getTotalDebtAttribute()
     {
-        // 1. Hitung tunggakan Tagihan (SPP dll)
         $billDebt = $this->bills()->where('status', 'UNPAID')->sum('amount');
-        
-        // 2. Hitung hutang Kantin (Jika status POS 'UNPAID')
-        $posDebt = $this->posOrders()->where('payment_status', 'UNPAID')->sum('total_amount');
-
+        $posDebt  = $this->posOrders()->where('payment_status', 'UNPAID')->sum('total_amount');
         return $billDebt + $posDebt;
     }
 
-    /**
-     * Format Rupiah Total Hutang
-     * Cara panggil: $student->formatted_total_debt
-     */
     public function getFormattedTotalDebtAttribute()
     {
         return 'Rp ' . number_format($this->total_debt, 0, ',', '.');
     }
 
-    /**
-     * Warna Badge Status Siswa (Untuk UI)
-     * Cara panggil: $student->status_color
-     */
-    public function getStatusColorAttribute()
+    public function getStatusColorAttribute(): string
     {
         return match ($this->status) {
-            'active' => 'bg-green-100 text-green-700 border-green-200',
-            'graduated' => 'bg-blue-100 text-blue-700 border-blue-200',
-            'dropped_out' => 'bg-red-100 text-red-700 border-red-200',
-            default => 'bg-gray-100 text-gray-700 border-gray-200',
+            'active'        => 'bg-green-100 text-green-700 border-green-200',
+            'pindah_masuk'  => 'bg-blue-100 text-blue-700 border-blue-200',
+            'pindah_keluar' => 'bg-orange-100 text-orange-700 border-orange-200',
+            'keluar'        => 'bg-red-100 text-red-700 border-red-200',
+            'graduated'     => 'bg-purple-100 text-purple-700 border-purple-200',
+            'alumni'        => 'bg-indigo-100 text-indigo-700 border-indigo-200',
+            'calon_siswa'   => 'bg-yellow-100 text-yellow-700 border-yellow-200',
+            default         => 'bg-gray-100 text-gray-700 border-gray-200',
         };
     }
 
-    /**
-     * Label Status Siswa (Huruf Kapital Rapih)
-     * Cara panggil: $student->status_label
-     */
-    public function getStatusLabelAttribute()
+    public function getStatusLabelAttribute(): string
     {
-        return match ($this->status) {
-            'active' => 'Siswa Aktif',
-            'graduated' => 'Lulus',
-            'dropped_out' => 'Keluar / DO',
-            default => ucfirst($this->status),
+        return self::STATUSES[$this->status] ?? ucfirst((string) $this->status);
+    }
+
+    public function getIsAktifAttribute(): bool
+    {
+        return $this->status === 'active';
+    }
+
+    public function getGenderLabelAttribute(): string
+    {
+        return match ($this->gender) {
+            'L' => 'Laki-laki',
+            'P' => 'Perempuan',
+            default => '-',
         };
     }
 }
