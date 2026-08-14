@@ -61,6 +61,29 @@ class Student extends Model
         return $this->belongsTo(\App\Models\Kelas::class, 'kelas_id');
     }
 
+    public function studentRombels()
+    {
+        return $this->hasMany(StudentRombel::class);
+    }
+
+    /**
+     * Rombel aktif siswa di tahun ajaran tertentu
+     */
+    public function rombelAktif(?int $tahunAjaranId = null)
+    {
+        $query = $this->hasOne(StudentRombel::class)->latest();
+        if ($tahunAjaranId) {
+            $query->where('tahun_ajaran_id', $tahunAjaranId);
+        }
+        return $query;
+    }
+
+    public function rombels()
+    {
+        return $this->belongsToMany(Rombel::class, 'student_rombels')
+                    ->withTimestamps();
+    }
+
     // ==========================================
     // SCOPES
     // ==========================================

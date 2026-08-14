@@ -17,6 +17,7 @@ use App\Http\Controllers\IntegrationController;    // Integrasi PPDB
 use App\Http\Controllers\SppController;            // (Legacy) SPP Lama
 use App\Http\Controllers\SchoolSettingController;  // Pengaturan Sekolah
 use App\Http\Controllers\NaikKelasController;       // Naik Kelas Massal
+use App\Http\Controllers\RombelController;           // Rombel & Tahun Ajaran
 use App\Http\Controllers\KelasController;           // Master Kelas
 
 /*
@@ -78,6 +79,21 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // MASTER KELAS
     Route::post('kelas/update-jenjang', [KelasController::class, 'updateJenjang'])->name('kelas.update-jenjang');
     Route::resource('kelas', KelasController::class)->except(['show']);
+
+    // ── Tahun Ajaran ─────────────────────────────────────────────────────────
+    Route::prefix('tahun-ajaran')->name('tahun-ajaran.')->group(function () {
+        Route::get('/',                [RombelController::class, 'tahunAjaranIndex'])->name('index');
+        Route::get('/create',          [RombelController::class, 'tahunAjaranCreate'])->name('create');
+        Route::post('/',               [RombelController::class, 'tahunAjaranStore'])->name('store');
+        Route::get('/{tahunAjaran}/edit',   [RombelController::class, 'tahunAjaranEdit'])->name('edit');
+        Route::put('/{tahunAjaran}',        [RombelController::class, 'tahunAjaranUpdate'])->name('update');
+        Route::delete('/{tahunAjaran}',     [RombelController::class, 'tahunAjaranDestroy'])->name('destroy');
+    });
+
+    // ── Rombel ───────────────────────────────────────────────────────────────
+    Route::resource('rombel', RombelController::class);
+    Route::post('rombel/{rombel}/assign-siswa',         [RombelController::class, 'assignSiswa'])->name('rombel.assign-siswa');
+    Route::delete('rombel/{rombel}/remove-siswa/{student}', [RombelController::class, 'removeSiswa'])->name('rombel.remove-siswa');
 
     // 3. BILLING / TAGIHAN (SYSTEM BARU)
     Route::controller(BillController::class)->prefix('bills')->name('bills.')->group(function () {

@@ -15,9 +15,11 @@ class KelasController extends Controller
             ->orderBy('nama_kelas')
             ->get();
 
-        $jenjang = DB::table('school_settings')->where('key', 'jenjang')->value('value') ?? 'SMA';
+        $jenjang    = DB::table('school_settings')->where('key', 'jenjang')->value('value') ?? 'SMA';
+        $tingkatMin = Kelas::tingkatMinimal();
+        $tingkatMax = Kelas::tingkatMaksimal();
 
-        return view('kelas.index', compact('kelas', 'jenjang'));
+        return view('kelas.index', compact('kelas', 'jenjang', 'tingkatMin', 'tingkatMax'));
     }
 
     public function create()
