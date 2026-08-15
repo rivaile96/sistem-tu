@@ -51,7 +51,7 @@ Route::prefix('siswa')->name('siswa.')->group(function () {
 
     // Auth (tidak butuh login)
     Route::get('/login',  [AuthSiswaController::class, 'showLogin'])->name('login');
-    Route::post('/login', [AuthSiswaController::class, 'login'])->name('login.post');
+    Route::post('/login', [AuthSiswaController::class, 'login'])->middleware('throttle:5,1')->name('login.post');
     Route::post('/logout',[AuthSiswaController::class, 'logout'])->name('logout');
 
     // Midtrans webhook — tidak butuh auth, Midtrans yang hit ini

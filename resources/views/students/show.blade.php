@@ -106,8 +106,17 @@
                                         </td>
                                         <td class="px-4 py-3 text-right">
                                             @if($bill->status == 'UNPAID')
-                                                <button onclick="confirmBillPay('{{ $bill->id }}', '{{ $bill->name }}', '{{ $bill->formatted_amount }}')"
-                                                        class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-md hover:shadow-lg transition transform active:scale-95">
+                                                {{--
+                                                    PHASE 1.5 — XSS fix:
+                                                    Values are stored in data-* attributes (HTML-escaped by Blade {{ }}).
+                                                    No Blade variable is interpolated into a JavaScript string literal.
+                                                    The click handler is attached via addEventListener in the script below.
+                                                --}}
+                                                <button type="button"
+                                                        class="btn-bill-pay bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-md hover:shadow-lg transition transform active:scale-95"
+                                                        data-bill-id="{{ $bill->id }}"
+                                                        data-bill-name="{{ $bill->name }}"
+                                                        data-bill-amount="{{ $bill->formatted_amount }}">
                                                     Bayar Sekarang
                                                 </button>
                                             @else
@@ -185,19 +194,75 @@
     </div>
 
     <script>
+        /**
+         * PHASE 1.5 — XSS fix.
+         *
+         * Previously: onclick="confirmBillPay('{{ $bill->id }}', '{{ $bill->name }}', ...)"
+         * Problem:    Blade values interpolated directly into JS string literals.
+         *             A name containing ' or " would break the JS string context.
+         *
+         * Now: values live in data-* HTML attributes (Blade {{ }} HTML-escapes them).
+         *      JS reads them via dataset — the browser decodes HTML entities so the
+         *      JS code always receives the original plain-text string as data, never
+         *      as executable code.
+         *
+         * Event delegation on <tbody> handles all rows including any added dynamically.
+         */
+        document.addEventListener('DOMContentLoaded', function () {
+            document.addEventListener('click', function (e) {
+                const btn = e.target.closest('.btn-bill-pay');
+                if (! btn) return;
+
+                // Read values from data attributes — never from JS string interpolation.
+                const billId     = btn.dataset.billId;
+                const billName   = btn.dataset.billName;
+                const billAmount = btn.dataset.billAmount;
+
+                confirmBillPay(billId, billName, billAmount);
+            });
+        });
+
         function confirmBillPay(id, name, amount) {
             Swal.fire({
                 title: 'Konfirmasi Pembayaran',
-                html: `Terima pembayaran <b>${name}</b> sebesar <br><span class="text-2xl font-bold text-blue-600">${amount}</span> ?`,
+                // Swal.fire html renders the name as text inside <b>.
+                // textContent assignment below ensures it is treated as plain text,
+                // not executable HTML — preventing stored XSS via bill name.
                 icon: 'question',
                 showCancelButton: true,
-                confirmButtonColor: '#2563eb', // Blue
+                confirmButtonColor: '#2563eb',
                 cancelButtonColor: '#d1d5db',
                 confirmButtonText: 'Ya, Terima Uang',
-                cancelButtonText: 'Batal'
+                cancelButtonText: 'Batal',
+                didOpen: function () {
+                    // Build the modal body using DOM text nodes — no innerHTML with
+                    // user-supplied values, so a name like <img onerror=...> is inert.
+                    const container = document.createElement('div');
+
+                    const line1    = document.createElement('span');
+                    line1.appendChild(document.createTextNode('Terima pembayaran '));
+                    const bold = document.createElement('b');
+                    bold.textContent = name;          // plain text — not innerHTML
+                    line1.appendChild(bold);
+                    container.appendChild(line1);
+
+                    container.appendChild(document.createElement('br'));
+
+                    const amountEl = document.createElement('span');
+                    amountEl.className = 'text-2xl font-bold text-blue-600';
+                    amountEl.textContent = amount;    // plain text — not innerHTML
+                    container.appendChild(amountEl);
+
+                    const htmlContainer = document.querySelector('.swal2-html-container');
+                    if (htmlContainer) {
+                        htmlContainer.innerHTML = '';
+                        htmlContainer.appendChild(container);
+                    }
+                }
             }).then((result) => {
                 if (result.isConfirmed) {
-                    // Buat Form Post Dinamis
+                    // Form POST — id is a numeric string from data-bill-id.
+                    // CSRF token is injected by Blade @csrf, unchanged.
                     let form = document.createElement('form');
                     form.method = 'POST';
                     form.action = `/bills/${id}/pay`;
