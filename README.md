@@ -1,59 +1,341 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Sistem TU — Tata Usaha Sekolah
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Sistem manajemen Tata Usaha sekolah berbasis Laravel. Mencakup manajemen siswa, kelas, rombel, tagihan, POS kantin/koperasi, PPDB, dan portal siswa dengan payment gateway Midtrans.
 
-## About Laravel
+**Live:** [https://tu.brody.my.id](https://tu.brody.my.id)
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+---
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## Fitur
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+### Admin / Staff TU
+- **Dashboard** — ringkasan aktivitas terkini, statistik tagihan dan transaksi POS
+- **Manajemen Siswa** — CRUD siswa, import via Excel, naik kelas massal
+- **Master Kelas** — kelola data kelas per jenjang (SD/SMP/SMA/SMK), modal create/edit/delete
+- **Rombel** — pengelompokan siswa per tahun ajaran
+- **PPDB** — pendaftaran peserta didik baru, verifikasi, terima/tolak
+- **Tagihan Sekolah** — buat tagihan per siswa atau per kelas, rekap pembayaran
+- **POS Sekolah** — kasir kantin/koperasi, master barang, paket/bundling
+- **Pengaturan Sekolah** — nama sekolah, alamat, kepala sekolah, jenjang, akreditasi, dll
 
-## Learning Laravel
+### Portal Siswa (`/siswa`)
+- Login dengan **NIS + tanggal lahir** (format `ddmmyy`)
+- Dashboard tagihan — lihat tagihan aktif dan riwayat pembayaran
+- **Bayar via Midtrans Snap** — semua metode: transfer bank, QRIS, GoPay, OVO, dll
+- Struk/bukti pembayaran otomatis setelah transaksi berhasil
+- Ringkasan tagihan bulan ini
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+### Security
+- CSP (Content Security Policy) middleware aktif
+- Rate limiting pada API login (`throttle:5,1`)
+- Mass assignment protection di semua model
+- Route `/register` ditutup (tidak ada registrasi publik)
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+---
 
-## Laravel Sponsors
+## Requirement
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+- PHP >= 8.2
+- Composer
+- MySQL / MariaDB
+- Node.js & NPM (untuk build assets)
+- PHP extension: `mbstring`, `openssl`, `pdo`, `tokenizer`, `xml`, `ctype`, `json`, `bcmath`, `gd`
 
-### Premium Partners
+---
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+## Instalasi
 
-## Contributing
+### 1. Clone Repository
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+```bash
+git clone https://github.com/rivaile96/sistem-tu.git
+cd sistem-tu
+```
 
-## Code of Conduct
+### 2. Install Dependency PHP
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+```bash
+composer install
+```
 
-## Security Vulnerabilities
+### 3. Install Dependency JS & Build Assets
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+```bash
+npm install
+npm run build
+```
 
-## License
+### 4. Setup Environment
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+```bash
+cp .env.example .env
+php artisan key:generate
+```
+
+Edit file `.env`:
+
+```env
+APP_NAME="Sistem TU"
+APP_ENV=local
+APP_KEY=         # otomatis terisi setelah key:generate
+APP_DEBUG=true
+APP_URL=http://localhost
+
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=sistem_tu
+DB_USERNAME=root
+DB_PASSWORD=your_password
+```
+
+### 5. Setup Database
+
+```bash
+# Buat database dulu di MySQL
+mysql -u root -p -e "CREATE DATABASE sistem_tu CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+
+# Jalankan migrasi
+php artisan migrate
+
+# (Opsional) Seed data awal
+php artisan db:seed
+```
+
+### 6. Storage Link
+
+```bash
+php artisan storage:link
+```
+
+### 7. Jalankan Server
+
+```bash
+php artisan serve
+```
+
+Akses di `http://localhost:8000`
+
+---
+
+## Konfigurasi Midtrans (Payment Gateway)
+
+Portal siswa menggunakan **Midtrans Snap** untuk pembayaran tagihan sekolah.
+
+### Langkah Setup
+
+#### 1. Daftar / Login Akun Midtrans
+
+- Sandbox (testing): [https://dashboard.sandbox.midtrans.com](https://dashboard.sandbox.midtrans.com)
+- Production: [https://dashboard.midtrans.com](https://dashboard.midtrans.com)
+
+#### 2. Ambil API Keys
+
+Di dashboard Midtrans → **Settings → Access Keys**:
+
+| Key | Keterangan |
+|-----|------------|
+| Merchant ID | ID merchant Anda |
+| Client Key | Digunakan di frontend (JavaScript) |
+| Server Key | Digunakan di backend (rahasia, jangan expose) |
+
+#### 3. Tambahkan ke `.env`
+
+```env
+# Midtrans Configuration
+MIDTRANS_SERVER_KEY=Mid-server-xxxxxxxxxxxxxxxxxxxx
+MIDTRANS_CLIENT_KEY=Mid-client-xxxxxxxxxxxxxxxxxxxx
+MIDTRANS_IS_PRODUCTION=false   # true untuk production
+```
+
+> **Penting:** Ganti `false` ke `true` saat deploy ke production.
+
+#### 4. Setup Notification URL (Webhook)
+
+Di dashboard Midtrans → **Settings → Configuration**:
+
+| Field | URL |
+|-------|-----|
+| Payment Notification URL | `https://your-domain.com/siswa/payment/callback` |
+| Finish Redirect URL | `https://your-domain.com/siswa/payment/success` |
+| Unfinish Redirect URL | `https://your-domain.com/siswa/dashboard` |
+| Error Redirect URL | `https://your-domain.com/siswa/dashboard` |
+
+> Untuk sandbox, gunakan URL production yang sudah bisa diakses publik (bukan localhost). Gunakan [ngrok](https://ngrok.com) atau [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) untuk testing lokal.
+
+#### 5. Switch ke Production
+
+Saat siap production:
+
+```env
+MIDTRANS_IS_PRODUCTION=true
+MIDTRANS_SERVER_KEY=Mid-server-xxxxxx   # ganti dengan production key
+MIDTRANS_CLIENT_KEY=Mid-client-xxxxxx  # ganti dengan production key
+```
+
+Lalu clear config cache:
+
+```bash
+php artisan config:clear
+php artisan cache:clear
+```
+
+---
+
+## Portal Siswa — Login
+
+Portal siswa diakses di `/siswa/login`.
+
+| Field | Format |
+|-------|--------|
+| NIS | Nomor Induk Siswa |
+| Password | Tanggal lahir format `ddmmyy` (contoh: lahir 12 Juli 2006 → `120706`) |
+
+Pastikan kolom `birth_date` siswa sudah diisi di database.
+
+---
+
+## Pengaturan Sekolah
+
+Setelah install, isi data sekolah melalui menu **Konfigurasi → Pengaturan Sekolah**:
+
+- Nama Sekolah
+- Alamat
+- Nomor Telepon
+- Email
+- Website
+- Nama Kepala Sekolah
+- Nama Bendahara
+- NPSN / NSS
+- Jenjang (SD/SMP/SMA/SMK/dll)
+- Akreditasi
+
+Pengaturan ini digunakan di header struk pembayaran dan tampilan sistem.
+
+---
+
+## Akun Admin Default
+
+Setelah `db:seed` (jika ada seeder):
+
+| Field | Value |
+|-------|-------|
+| Email | `admin@sekolah.com` |
+| Password | `password` |
+
+> Segera ganti password setelah login pertama melalui menu **Profile User**.
+
+---
+
+## Struktur Role
+
+| Role | Akses |
+|------|-------|
+| `superadmin` | Semua fitur + pengaturan sistem |
+| `admin_tu` | Manajemen siswa, kelas, tagihan, POS |
+| `bendahara` | Tagihan dan laporan keuangan |
+| `siswa` | Portal siswa (login via NIS) |
+
+---
+
+## Deployment ke Production
+
+### Nginx Config (contoh)
+
+```nginx
+server {
+    listen 80;
+    server_name your-domain.com;
+    root /var/www/sistem-tu/public;
+
+    index index.php;
+
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    location ~ \.php$ {
+        fastcgi_pass unix:/var/run/php/php8.2-fpm.sock;
+        fastcgi_index index.php;
+        fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+        include fastcgi_params;
+    }
+}
+```
+
+### Optimasi Production
+
+```bash
+composer install --no-dev --optimize-autoloader
+php artisan config:cache
+php artisan route:cache
+php artisan view:cache
+npm run build
+```
+
+### Permission
+
+```bash
+chown -R www-data:www-data storage bootstrap/cache
+chmod -R 775 storage bootstrap/cache
+```
+
+---
+
+## Troubleshooting
+
+### Config tidak terupdate setelah edit `.env`
+
+```bash
+php artisan config:clear
+php artisan cache:clear
+```
+
+Jika file `bootstrap/cache/config.php` dimiliki oleh `www-data` dan tidak bisa dihapus:
+
+```bash
+sudo php artisan config:clear
+# atau
+sudo -u www-data php artisan config:clear
+```
+
+### Midtrans 401 Unauthorized
+
+Cek apakah config cache berisi placeholder lama:
+
+```bash
+php artisan tinker
+>>> config('midtrans.server_key')
+```
+
+Jika output adalah `your-midtrans-server-key` (placeholder), bukan key asli → config cache perlu di-clear.
+
+### White screen / blank page
+
+```bash
+php artisan view:clear
+php artisan cache:clear
+tail -100 storage/logs/laravel.log
+```
+
+### Portal siswa tidak bisa login
+
+- Pastikan kolom `nis` dan `birth_date` siswa sudah diisi
+- Format password: `ddmmyy` tanpa strip (contoh: 12 Juli 2006 → `120706`)
+
+---
+
+## Teknologi
+
+- **Backend:** Laravel 11, PHP 8.2
+- **Frontend:** Blade, Tailwind CSS, Alpine.js
+- **Database:** MySQL / MariaDB
+- **Payment:** Midtrans Snap
+- **Notifikasi:** SweetAlert2
+- **Auth Siswa:** Custom guard (NIS + tanggal lahir)
+
+---
+
+## Lisensi
+
+Project ini dikembangkan untuk keperluan internal. Tidak untuk distribusi publik.
