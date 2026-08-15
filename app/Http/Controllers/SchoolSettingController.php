@@ -31,12 +31,20 @@ class SchoolSettingController extends Controller
         // 2. SIMPAN DATA TEKS (Nama, Alamat, Telp, Nama Bendahara)
         // PENTING: Kita harus kecualikan file 'school_logo' DAN 'school_signature'
         // agar sistem tidak mencoba menyimpannya sebagai teks (yang bikin error).
-        $data = $request->except(['_token', 'school_logo', 'school_signature']);
-        
+        // Whitelist key yang boleh diupdate — cegah arbitrary key injection
+        $allowedKeys = [
+            'school_name', 'school_address', 'school_phone',
+            'school_email', 'school_website', 'principal_name',
+            'treasurer_name', 'school_npsn', 'school_nss',
+            'jenjang', 'accreditation',
+        ];
+
+        $data = $request->only($allowedKeys);
+
         foreach ($data as $key => $value) {
             DB::table('school_settings')->updateOrInsert(
-                ['key' => $key], // Cari berdasarkan key
-                ['value' => $value, 'updated_at' => now()] // Update valuenya
+                ['key' => $key],
+                ['value' => $value, 'updated_at' => now()]
             );
         }
 

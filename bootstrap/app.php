@@ -15,15 +15,20 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
-        
-        // Konfigurasi Pengecualian CSRF (Untuk Webhook Midtrans nanti)
-        // Karena Webhook dikirim oleh server Midtrans, kita harus izinkan lewat.
+
+        // CSRF exceptions — Midtrans webhook + portal siswa callback
         $middleware->validateCsrfTokens(except: [
-            'midtrans-callback',      // Jika route ada di web.php
-            'api/midtrans-callback',  // Jika route ada di api.php
-            'midtrans/webhook',       // (Cadangan sesuai request lu)
+            'midtrans-callback',
+            'api/midtrans-callback',
+            'midtrans/webhook',
+            'siswa/payment/callback',  // Midtrans server-to-server callback
         ]);
-        
+
+        // Middleware alias
+        $middleware->alias([
+            'auth.siswa' => \App\Http\Middleware\AuthSiswa::class,
+        ]);
+
     })
     ->withExceptions(function (Exceptions $exceptions) {
         //

@@ -29,7 +29,7 @@ class PosItemController extends Controller
             'image' => 'nullable|image|mimes:jpeg,png,jpg|max:2048', // Validasi Gambar
         ]);
 
-        $data = $request->all();
+        $data = $request->only(['name', 'category', 'stock', 'price']);
 
         // Logic Upload Gambar Baru
         if ($request->hasFile('image')) {
@@ -51,7 +51,7 @@ class PosItemController extends Controller
         ]);
 
         $item = PosItem::findOrFail($id);
-        $data = $request->all();
+        $data = $request->only(['name', 'category', 'stock', 'price']);
 
         // Logic Ganti Gambar
         if ($request->hasFile('image')) {

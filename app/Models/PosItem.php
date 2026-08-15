@@ -6,8 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class PosItem extends Model
 {
-    // Biar gampang update stok
-    protected $guarded = []; 
+    protected $fillable = ['name', 'category', 'stock', 'price', 'image'];
 
     // Relasi: Barang ini mungkin ada di dalam Paket Bundling
     public function bundleItems()

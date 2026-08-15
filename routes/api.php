@@ -12,7 +12,7 @@ use App\Http\Controllers\Api\ParentApiController; // <--- Pastikan ini ada!
 
 // 1. PUBLIC ROUTES (Login & Webhook)
 // Ini jalur yang lu tembak di Postman
-Route::post('/login', [ParentApiController::class, 'login']);
+Route::post('/login', [ParentApiController::class, 'login'])->middleware('throttle:5,1');
 Route::post('/midtrans-callback', [ParentApiController::class, 'callback']);
 
 // 2. PROTECTED ROUTES (Harus Punya Token)

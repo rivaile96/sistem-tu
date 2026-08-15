@@ -2,25 +2,6 @@
     <div class="py-12 bg-gradient-to-b from-gray-50 to-blue-50 min-h-screen">
         <div class="max-w-6xl mx-auto sm:px-6 lg:px-8">
             
-            @if(session('success'))
-            <div class="mb-6 bg-gradient-to-r from-green-50 to-emerald-50 border-l-4 border-green-500 p-4 rounded-r-lg shadow-md flex items-center gap-3 animate-fade-in">
-                <div class="text-green-500 bg-white p-2 rounded-full shadow-sm">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                    </svg>
-                </div>
-                <div class="flex-1">
-                    <p class="font-bold text-green-800">Berhasil!</p>
-                    <p class="text-sm text-green-700">{{ session('success') }}</p>
-                </div>
-                <button class="text-green-500 hover:text-green-700" onclick="this.parentElement.style.display='none'">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-                    </svg>
-                </button>
-            </div>
-            @endif
-
             <!-- Header Card -->
             <div class="bg-gradient-to-r from-[#0284c7] to-[#0ea5e9] rounded-2xl shadow-2xl mb-8 overflow-hidden">
                 <div class="p-8 relative overflow-hidden">

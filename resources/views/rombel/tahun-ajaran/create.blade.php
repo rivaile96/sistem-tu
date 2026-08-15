@@ -1,6 +1,6 @@
-@extends('layouts.app')
+<x-app-layout>
 
-@section('content')
+
 <div class="p-6">
     {{-- Header --}}
     <div class="flex items-center gap-3 mb-6">
@@ -105,4 +105,4 @@
         </form>
     </div>
 </div>
-@endsection
+</x-app-layout>

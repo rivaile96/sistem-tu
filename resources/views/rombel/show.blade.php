@@ -1,6 +1,6 @@
-@extends('layouts.app')
+<x-app-layout>
 
-@section('content')
+
 <div class="p-6">
     {{-- Header --}}
     <div class="flex items-center justify-between mb-6">
@@ -55,25 +55,6 @@
         </a>
     </div>
 
-    {{-- Flash Messages --}}
-    @if(session('success'))
-        <div class="bg-green-50 border border-green-200 text-green-800 rounded-lg p-4 mb-6 flex items-start gap-3">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-500 mt-0.5 shrink-0" viewBox="0 0 20 20" fill="currentColor">
-                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
-            </svg>
-            <span class="text-sm">{{ session('success') }}</span>
-        </div>
-    @endif
-
-    @if(session('error'))
-        <div class="bg-red-50 border border-red-200 text-red-800 rounded-lg p-4 mb-6 flex items-start gap-3">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-red-500 mt-0.5 shrink-0" viewBox="0 0 20 20" fill="currentColor">
-                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
-            </svg>
-            <span class="text-sm">{{ session('error') }}</span>
-        </div>
-    @endif
-
     {{-- ============================= --}}
     {{-- Section 1: Daftar Siswa       --}}
     {{-- ============================= --}}
@@ -115,7 +96,7 @@
                                     {{ $sr->student->nis ?? '-' }}
                                 </td>
                                 <td class="py-3 pr-4 font-medium text-slate-800">
-                                    {{ $sr->student->nama ?? 'Siswa tidak ditemukan' }}
+                                    {{ $sr->student->name ?? 'Siswa tidak ditemukan' }}
                                 </td>
                                 <td class="py-3 pr-4">
                                     @php $status = $sr->student->status ?? null; @endphp
@@ -131,7 +112,7 @@
                                     <form
                                         action="{{ route('rombel.remove-siswa', [$rombel, $sr->student_id]) }}"
                                         method="POST"
-                                        onsubmit="return confirm('Keluarkan {{ addslashes($sr->student->nama ?? 'siswa ini') }} dari rombel {{ addslashes($rombel->nama_rombel) }}?')"
+                                        onsubmit="return confirm('Keluarkan {{ addslashes($sr->student->name ?? 'siswa ini') }} dari rombel {{ addslashes($rombel->nama_rombel) }}?')"
                                     >
                                         @csrf
                                         @method('DELETE')
@@ -194,7 +175,7 @@
                             >
                             <div class="min-w-0">
                                 <p class="text-sm font-medium text-slate-800 truncate group-hover:text-slate-900">
-                                    {{ $siswa->nama }}
+                                    {{ $siswa->name }}
                                 </p>
                                 <p class="text-xs text-slate-400 font-mono">{{ $siswa->nis ?? 'NIS tidak ada' }}</p>
                             </div>
@@ -217,4 +198,4 @@
         @endif
     </div>
 </div>
-@endsection
+</x-app-layout>

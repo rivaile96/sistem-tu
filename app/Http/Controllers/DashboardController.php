@@ -136,7 +136,8 @@ class DashboardController extends Controller
         });
 
         // Gabung, Sort by Time, Ambil 5 Teratas
-        $recentActivities = $latestPos->merge($latestBill)->sortByDesc('time')->take(5);
+        // Wrap collect() dulu agar tidak crash getKey() saat merge Eloquent Collection dengan plain arrays
+        $recentActivities = collect($latestPos)->merge(collect($latestBill))->sortByDesc('time')->take(5);
 
         // ==========================================================
         // RETURN VIEW

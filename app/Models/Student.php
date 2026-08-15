@@ -3,13 +3,31 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Model;
+use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
-class Student extends Model
+class Student extends Authenticatable
 {
     use HasApiTokens, HasFactory, Notifiable;
+
+    /**
+     * Kolom yang dipakai sebagai "username" saat Auth::guard('siswa')->attempt()
+     */
+    public function getAuthIdentifierName(): string
+    {
+        return 'nis';
+    }
+
+    /**
+     * Password siswa = tanggal lahir format dmy (ddmmyy, 6 digit)
+     * Kita TIDAK hash ini karena login divalidasi manual di controller.
+     * Method ini wajib ada agar Authenticatable contract terpenuhi.
+     */
+    public function getAuthPassword(): string
+    {
+        return \Carbon\Carbon::parse($this->birth_date)->format('dmy');
+    }
 
     protected $table = 'students';
     protected $guarded = ['id'];

@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class PosBundleItem extends Model
 {
-    protected $guarded = [];
+    protected $fillable = ['pos_bundle_id', 'pos_item_id', 'quantity', 'price', 'subtotal'];
 
     // Relasi: Item ini milik paket mana?
     public function bundle()

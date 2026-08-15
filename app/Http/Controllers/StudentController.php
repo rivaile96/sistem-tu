@@ -14,9 +14,6 @@ use League\Csv\Reader;
 
 class StudentController extends Controller
 {
-    /**
-     * Daftar semua siswa dengan filter & statistik
-     */
     public function index(Request $request)
     {
         $classes = Student::select('class_name')
@@ -51,7 +48,6 @@ class StudentController extends Controller
             ->paginate(20)
             ->withQueryString();
 
-        // Statistik cepat
         $stats = [
             'total'         => Student::count(),
             'aktif'         => Student::where('status', 'active')->count(),
@@ -62,18 +58,12 @@ class StudentController extends Controller
         return view('students.index', compact('students', 'classes', 'stats'));
     }
 
-    /**
-     * Form tambah siswa baru
-     */
     public function create()
     {
         $statuses = Student::STATUSES;
         return view('students.create', compact('statuses'));
     }
 
-    /**
-     * Simpan siswa baru
-     */
     public function store(Request $request)
     {
         $validated = $request->validate([
@@ -95,7 +85,6 @@ class StudentController extends Controller
 
         $student = Student::create($validated);
 
-        // Catat log status awal
         StudentStatusLog::create([
             'student_id'  => $student->id,
             'status_lama' => null,
@@ -104,13 +93,17 @@ class StudentController extends Controller
             'diubah_oleh' => Auth::id(),
         ]);
 
+        if ($request->ajax() || $request->wantsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => "Siswa {$student->name} berhasil ditambahkan.",
+            ]);
+        }
+
         return redirect()->route('students.index')
             ->with('success', "Siswa {$student->name} berhasil ditambahkan.");
     }
 
-    /**
-     * Detail keuangan siswa
-     */
     public function show($id)
     {
         $student = Student::findOrFail($id);
@@ -126,19 +119,18 @@ class StudentController extends Controller
         return view('students.show', compact('student', 'posTransactions', 'debtPos', 'statusLogs'));
     }
 
-    /**
-     * Form edit data siswa
-     */
     public function edit($id)
     {
         $student  = Student::findOrFail($id);
         $statuses = Student::STATUSES;
+
+        if (request()->wantsJson()) {
+            return response()->json(array_merge($student->toArray(), ['statuses' => $statuses]));
+        }
+
         return view('students.edit', compact('student', 'statuses'));
     }
 
-    /**
-     * Update data siswa
-     */
     public function update(Request $request, $id)
     {
         $student = Student::findOrFail($id);
@@ -159,25 +151,34 @@ class StudentController extends Controller
 
         $student->update($validated);
 
+        if ($request->ajax() || $request->wantsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => "Data siswa {$student->name} berhasil diperbarui.",
+            ]);
+        }
+
         return redirect()->route('students.show', $student->id)
             ->with('success', "Data siswa {$student->name} berhasil diperbarui.");
     }
 
-    /**
-     * Hapus siswa (soft: ubah status ke keluar)
-     */
     public function destroy($id)
     {
         $student = Student::findOrFail($id);
+        $nama    = $student->name;
         $student->delete();
 
+        if (request()->ajax() || request()->wantsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => "Data siswa {$nama} berhasil dihapus.",
+            ]);
+        }
+
         return redirect()->route('students.index')
-            ->with('success', "Data siswa {$student->name} berhasil dihapus.");
+            ->with('success', "Data siswa {$nama} berhasil dihapus.");
     }
 
-    /**
-     * Form ubah status siswa
-     */
     public function formUbahStatus($id)
     {
         $student  = Student::findOrFail($id);
@@ -191,9 +192,6 @@ class StudentController extends Controller
         return view('students.ubah-status', compact('student', 'statuses', 'logs'));
     }
 
-    /**
-     * Proses ubah status siswa
-     */
     public function ubahStatus(Request $request, $id)
     {
         $student = Student::findOrFail($id);
@@ -233,18 +231,11 @@ class StudentController extends Controller
             ->with('success', "Status {$student->name} diubah menjadi {$labelBaru}.");
     }
 
-    /**
-     * Halaman import CSV
-     */
     public function importForm()
     {
         return view('students.import');
     }
 
-    /**
-     * Proses import CSV siswa
-     * Format kolom: nis, nisn (opt), name, gender (L/P), class_name, birth_place, birth_date, address, agama, tahun_masuk, parent_phone
-     */
     public function importCsv(Request $request)
     {
         $request->validate([
@@ -265,14 +256,12 @@ class StudentController extends Controller
             foreach ($records as $offset => $row) {
                 $row = array_map('trim', $row);
 
-                // Validasi minimal
                 if (empty($row['nis']) || empty($row['name']) || empty($row['class_name'])) {
                     $errors[] = "Baris " . ($offset + 2) . ": NIS, Nama, atau Kelas kosong — dilewati.";
                     $skipped++;
                     continue;
                 }
 
-                // Cek duplikat NIS
                 if (Student::where('nis', $row['nis'])->exists()) {
                     $errors[] = "Baris " . ($offset + 2) . ": NIS {$row['nis']} sudah ada — dilewati.";
                     $skipped++;
@@ -317,9 +306,6 @@ class StudentController extends Controller
         }
     }
 
-    /**
-     * Download template CSV untuk import siswa
-     */
     public function downloadTemplate()
     {
         $headers = [

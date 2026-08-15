@@ -12,14 +12,10 @@ use Illuminate\Support\Facades\DB;
 
 class PPDBController extends Controller
 {
-    // ──────────────────────────────────────────────────────────────────────────
-    // INDEX — Daftar semua calon siswa
-    // ──────────────────────────────────────────────────────────────────────────
     public function index(Request $request)
     {
         $query = Student::byStatus('calon_siswa')->latest();
 
-        // Filter pencarian
         if ($request->filled('search')) {
             $search = $request->search;
             $query->where(function ($q) use ($search) {
@@ -37,14 +33,15 @@ class PPDBController extends Controller
                             ->whereMonth('created_at', now()->month)
                             ->whereYear('created_at', now()->year)
                             ->count(),
+            'diterima'  => Student::where('status', 'active')
+                            ->whereHas('statusLogs', fn($q) => $q->where('status_lama', 'calon_siswa'))
+                            ->count(),
+            'pending'   => Student::byStatus('calon_siswa')->count(),
         ];
 
         return view('ppdb.index', compact('calonSiswa', 'stats'));
     }
 
-    // ──────────────────────────────────────────────────────────────────────────
-    // CREATE / STORE — Form pendaftaran calon siswa baru
-    // ──────────────────────────────────────────────────────────────────────────
     public function create()
     {
         return view('ppdb.create');
@@ -72,7 +69,6 @@ class PPDBController extends Controller
                 'status_changed_by' => Auth::id(),
             ]));
 
-            // Log status awal
             StudentStatusLog::create([
                 'student_id'  => $siswa->id,
                 'status_lama' => null,
@@ -82,18 +78,21 @@ class PPDBController extends Controller
             ]);
         });
 
+        if ($request->ajax() || $request->wantsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Calon siswa berhasil didaftarkan.',
+            ]);
+        }
+
         return redirect()->route('ppdb.index')
             ->with('success', 'Calon siswa berhasil didaftarkan.');
     }
 
-    // ──────────────────────────────────────────────────────────────────────────
-    // SHOW — Detail calon siswa + riwayat log
-    // ──────────────────────────────────────────────────────────────────────────
     public function show(int $id)
     {
         $siswa = Student::with('statusLogs.statusChangedBy')->findOrFail($id);
 
-        // Pastikan hanya calon_siswa yang bisa dibuka di halaman ini
         if ($siswa->status !== 'calon_siswa') {
             return redirect()->route('students.show', $id)
                 ->with('info', 'Siswa ini sudah diproses dan tidak lagi berstatus Calon Siswa.');
@@ -104,16 +103,20 @@ class PPDBController extends Controller
         return view('ppdb.show', compact('siswa', 'kelasList'));
     }
 
-    // ──────────────────────────────────────────────────────────────────────────
-    // EDIT / UPDATE — Edit data calon siswa
-    // ──────────────────────────────────────────────────────────────────────────
     public function edit(int $id)
     {
         $siswa = Student::findOrFail($id);
 
         if ($siswa->status !== 'calon_siswa') {
+            if (request()->wantsJson()) {
+                return response()->json(['success' => false, 'message' => 'Data ini sudah tidak bisa diedit via PPDB.'], 422);
+            }
             return redirect()->route('students.show', $id)
                 ->with('info', 'Data siswa ini sudah tidak bisa diedit via PPDB.');
+        }
+
+        if (request()->wantsJson()) {
+            return response()->json($siswa);
         }
 
         return view('ppdb.edit', compact('siswa'));
@@ -137,13 +140,17 @@ class PPDBController extends Controller
 
         $siswa->update($validated);
 
+        if ($request->ajax() || $request->wantsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Data calon siswa berhasil diperbarui.',
+            ]);
+        }
+
         return redirect()->route('ppdb.show', $id)
             ->with('success', 'Data calon siswa berhasil diperbarui.');
     }
 
-    // ──────────────────────────────────────────────────────────────────────────
-    // SELEKSI — Terima atau tolak calon siswa (satu per satu)
-    // ──────────────────────────────────────────────────────────────────────────
     public function seleksi(Request $request, int $id)
     {
         $siswa = Student::findOrFail($id);
@@ -162,7 +169,6 @@ class PPDBController extends Controller
 
             if ($aksi === 'terima') {
                 $kelas = Kelas::find($validated['kelas_id']);
-
                 $siswa->update([
                     'status'            => 'active',
                     'kelas_id'          => $validated['kelas_id'],
@@ -171,23 +177,16 @@ class PPDBController extends Controller
                     'status_changed_at' => now(),
                     'status_changed_by' => Auth::id(),
                 ]);
-
                 $catatanLog = 'Diterima via PPDB' . ($kelas ? ', ditempatkan di ' . $kelas->nama_kelas : '');
-                if (!empty($validated['catatan'])) {
-                    $catatanLog .= '. ' . $validated['catatan'];
-                }
+                if (!empty($validated['catatan'])) $catatanLog .= '. ' . $validated['catatan'];
             } else {
-                // Tolak → ubah status ke 'keluar'
                 $siswa->update([
                     'status'            => 'keluar',
                     'status_changed_at' => now(),
                     'status_changed_by' => Auth::id(),
                 ]);
-
                 $catatanLog = 'Ditolak via PPDB';
-                if (!empty($validated['catatan'])) {
-                    $catatanLog .= ': ' . $validated['catatan'];
-                }
+                if (!empty($validated['catatan'])) $catatanLog .= ': ' . $validated['catatan'];
             }
 
             StudentStatusLog::create([
@@ -206,19 +205,10 @@ class PPDBController extends Controller
         return redirect()->route('ppdb.index')->with('success', $pesan);
     }
 
-    // ──────────────────────────────────────────────────────────────────────────
-    // KONVERSI MASSAL — Preview + eksekusi konversi semua calon ke aktif
-    // ──────────────────────────────────────────────────────────────────────────
     public function konversiIndex()
     {
-        $calonSiswa = Student::byStatus('calon_siswa')
-            ->orderBy('name')
-            ->get();
-
-        $kelasList = Kelas::where('is_aktif', true)
-            ->orderBy('tingkat')
-            ->get();
-
+        $calonSiswa       = Student::byStatus('calon_siswa')->orderBy('name')->get();
+        $kelasList        = Kelas::where('is_aktif', true)->orderBy('tingkat')->get();
         $tahunAjaranAktif = TahunAjaran::where('is_aktif', true)->first();
 
         return view('ppdb.konversi', compact('calonSiswa', 'kelasList', 'tahunAjaranAktif'));
@@ -246,13 +236,11 @@ class PPDBController extends Controller
                     continue;
                 }
 
-                // Kelas per-siswa lebih prioritas daripada default
                 $kelasId = $validated['kelas_per_siswa'][$siswaId]
                     ?? $validated['kelas_id_default']
                     ?? null;
 
-                $kelas = $kelasId ? Kelas::find($kelasId) : null;
-
+                $kelas      = $kelasId ? Kelas::find($kelasId) : null;
                 $statusLama = $siswa->status;
 
                 $siswa->update([
@@ -267,8 +255,7 @@ class PPDBController extends Controller
                     'student_id'  => $siswa->id,
                     'status_lama' => $statusLama,
                     'status_baru' => 'active',
-                    'catatan'     => 'Konversi massal PPDB'
-                                   . ($kelas ? ', ditempatkan di ' . $kelas->nama_kelas : ''),
+                    'catatan'     => 'Konversi massal PPDB' . ($kelas ? ', ditempatkan di ' . $kelas->nama_kelas : ''),
                     'diubah_oleh' => $userId,
                 ]);
 
@@ -284,20 +271,27 @@ class PPDBController extends Controller
         return redirect()->route('ppdb.index')->with('success', $pesan);
     }
 
-    // ──────────────────────────────────────────────────────────────────────────
-    // DESTROY — Hapus calon siswa (sebelum diterima)
-    // ──────────────────────────────────────────────────────────────────────────
     public function destroy(int $id)
     {
         $siswa = Student::findOrFail($id);
 
         if ($siswa->status !== 'calon_siswa') {
+            if (request()->ajax() || request()->wantsJson()) {
+                return response()->json(['success' => false, 'message' => 'Hanya calon siswa yang bisa dihapus via PPDB.'], 422);
+            }
             return back()->with('error', 'Hanya calon siswa yang bisa dihapus via PPDB.');
         }
 
         $nama = $siswa->name;
         $siswa->statusLogs()->delete();
         $siswa->delete();
+
+        if (request()->ajax() || request()->wantsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => "Data calon siswa {$nama} berhasil dihapus.",
+            ]);
+        }
 
         return redirect()->route('ppdb.index')
             ->with('success', "Data calon siswa {$nama} berhasil dihapus.");

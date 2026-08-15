@@ -20,6 +20,9 @@ use App\Http\Controllers\NaikKelasController;       // Naik Kelas Massal
 use App\Http\Controllers\RombelController;           // Rombel & Tahun Ajaran
 use App\Http\Controllers\KelasController;           // Master Kelas
 use App\Http\Controllers\PPDBController;            // PPDB Flow
+use App\Http\Controllers\Siswa\AuthSiswaController;
+use App\Http\Controllers\Siswa\DashboardSiswaController;
+use App\Http\Controllers\Siswa\PaymentSiswaController;
 
 /*
 |--------------------------------------------------------------------------
@@ -39,6 +42,29 @@ use App\Http\Controllers\PPDBController;            // PPDB Flow
 // --- HALAMAN DEPAN (Redirect ke Login) ---
 Route::get('/', function () {
     return redirect()->route('login');
+});
+
+// =========================================================================
+//  PORTAL SISWA (Guard: siswa — terpisah dari admin)
+// =========================================================================
+Route::prefix('siswa')->name('siswa.')->group(function () {
+
+    // Auth (tidak butuh login)
+    Route::get('/login',  [AuthSiswaController::class, 'showLogin'])->name('login');
+    Route::post('/login', [AuthSiswaController::class, 'login'])->name('login.post');
+    Route::post('/logout',[AuthSiswaController::class, 'logout'])->name('logout');
+
+    // Midtrans webhook — tidak butuh auth, Midtrans yang hit ini
+    Route::post('/payment/callback', [PaymentSiswaController::class, 'callback'])->name('payment.callback');
+
+    // Protected — wajib login siswa
+    Route::middleware('auth.siswa')->group(function () {
+        Route::get('/dashboard',            [DashboardSiswaController::class, 'index'])->name('dashboard');
+        Route::get('/tagihan/{bill}',        [DashboardSiswaController::class, 'detail'])->name('bill.detail');
+        Route::post('/tagihan/{bill}/pay',   [PaymentSiswaController::class, 'createToken'])->name('payment.token');
+        Route::get('/tagihan/{bill}/struk',  [PaymentSiswaController::class, 'struk'])->name('tagihan.struk');
+        Route::get('/payment/success',       [PaymentSiswaController::class, 'success'])->name('payment.success');
+    });
 });
 
 // Auth Routes (Laravel Breeze)
@@ -174,3 +200,5 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::delete('/profile', 'destroy')->name('profile.destroy');
     });
 });
+
+

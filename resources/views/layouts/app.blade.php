@@ -187,23 +187,27 @@
 
     <div class="flex flex-col min-h-screen lg:pl-64">
         
-        <header class="h-16 flex items-center justify-between px-6 bg-white border-b border-gray-200 shadow-sm sticky top-0 z-30">
-            <div class="flex items-center gap-4">
-                <button @click="sidebarOpen = true" class="lg:hidden p-2 rounded-lg text-gray-500 hover:bg-gray-100">
+        <header class="h-16 flex items-center justify-between gap-3 px-4 md:px-6 bg-white border-b border-gray-200 shadow-sm sticky top-0 z-30">
+            <div class="flex items-center gap-3 min-w-0 flex-1">
+                <button @click="sidebarOpen = true" class="lg:hidden p-2 rounded-lg text-gray-500 hover:bg-gray-100 shrink-0">
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
                 </button>
-                
                 @if (isset($header))
-                    <div class="font-bold text-gray-800 text-lg">{{ $header }}</div>
+                    <div class="font-bold text-gray-800 text-base md:text-lg truncate">{{ $header }}</div>
+                @elseif (isset($pageTitle))
+                    <h2 class="text-base md:text-lg font-bold text-gray-800 truncate">{{ $pageTitle }}</h2>
                 @else
-                    <h2 class="text-lg font-bold text-gray-800">Dashboard</h2>
+                    <h2 class="text-base md:text-lg font-bold text-gray-800">Dashboard</h2>
                 @endif
             </div>
+            @if (isset($headerAction))
+            <div class="shrink-0">{!! $headerAction !!}</div>
+            @endif
         </header>
 
-        <main class="flex-1 p-6 lg:p-10">
-            <div class="w-full">
-                @yield('content')
+        <main class="flex-1">
+            <div class="w-full min-h-full">
+                {{ $slot }}
             </div>
         </main>
 
@@ -213,12 +217,41 @@
     </div>
 
     <script>
+        // ─── Global SweetAlert Flash Handler ───────────────────────────────────
+        const _swalToast = Swal.mixin({
+            toast: true,
+            position: 'top-end',
+            showConfirmButton: false,
+            timer: 3000,
+            timerProgressBar: true,
+            didOpen: (toast) => {
+                toast.onmouseenter = Swal.stopTimer;
+                toast.onmouseleave = Swal.resumeTimer;
+            }
+        });
+
         @if(session('success'))
-            Swal.fire({ icon: 'success', title: 'Berhasil!', text: "{{ session('success') }}", showConfirmButton: false, timer: 1500, background: '#fff', iconColor: '#0ea5e9' });
+            _swalToast.fire({ icon: 'success', title: '{{ addslashes(session('success')) }}' });
         @endif
+
         @if(session('error'))
-            Swal.fire({ icon: 'error', title: 'Gagal', text: "{{ session('error') }}", confirmButtonColor: '#ef4444' });
+            Swal.fire({
+                icon: 'error',
+                title: 'Gagal!',
+                text: '{{ addslashes(session('error')) }}',
+                confirmButtonColor: '#ef4444',
+                background: '#fff'
+            });
         @endif
+
+        @if(session('warning'))
+            _swalToast.fire({ icon: 'warning', title: '{{ addslashes(session('warning')) }}' });
+        @endif
+
+        @if(session('info'))
+            _swalToast.fire({ icon: 'info', title: '{{ addslashes(session('info')) }}' });
+        @endif
+        // ───────────────────────────────────────────────────────────────────────
     </script>
 </body>
 </html>

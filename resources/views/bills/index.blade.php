@@ -1,5 +1,4 @@
 <x-app-layout>
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
     <div class="bg-gradient-to-br from-slate-50 to-blue-50 min-h-screen pb-12">
         
@@ -384,36 +383,5 @@
             });
         });
 
-        // Notifikasi Toast
-        @if(session('success'))
-            const Toast = Swal.mixin({
-                toast: true,
-                position: 'top-end',
-                showConfirmButton: false,
-                timer: 3000,
-                timerProgressBar: true,
-                background: '#ffffff',
-                iconColor: '#0284c7',
-                color: '#1e293b',
-                didOpen: (toast) => {
-                    toast.addEventListener('mouseenter', Swal.stopTimer);
-                    toast.addEventListener('mouseleave', Swal.resumeTimer);
-                }
-            });
-            Toast.fire({
-                icon: 'success',
-                title: "{{ session('success') }}"
-            });
-        @endif
-        
-        @if(session('error'))
-            Swal.fire({
-                icon: 'error',
-                title: 'Terjadi Kesalahan',
-                text: "{{ session('error') }}",
-                confirmButtonColor: '#0284c7',
-                background: '#ffffff'
-            });
-        @endif
     </script>
 </x-app-layout>

@@ -40,12 +40,30 @@ class RombelController extends Controller
             $ta->setAktif();
         }
 
+        if ($request->ajax() || $request->wantsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => "Tahun ajaran {$ta->nama} berhasil dibuat.",
+            ]);
+        }
+
         return redirect()->route('rombel.tahun-ajaran.index')
             ->with('success', "Tahun ajaran {$ta->nama} berhasil dibuat.");
     }
 
     public function tahunAjaranEdit(TahunAjaran $tahunAjaran)
     {
+        if (request()->wantsJson()) {
+            return response()->json([
+                'id'               => $tahunAjaran->id,
+                'nama'             => $tahunAjaran->nama,
+                'tanggal_mulai'    => $tahunAjaran->tanggal_mulai
+                    ? \Carbon\Carbon::parse($tahunAjaran->tanggal_mulai)->format('Y-m-d') : '',
+                'tanggal_selesai'  => $tahunAjaran->tanggal_selesai
+                    ? \Carbon\Carbon::parse($tahunAjaran->tanggal_selesai)->format('Y-m-d') : '',
+                'is_aktif'         => $tahunAjaran->is_aktif,
+            ]);
+        }
         return view('rombel.tahun-ajaran.edit', compact('tahunAjaran'));
     }
 
@@ -64,6 +82,13 @@ class RombelController extends Controller
             $tahunAjaran->setAktif();
         }
 
+        if ($request->ajax() || $request->wantsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => "Tahun ajaran {$tahunAjaran->nama} berhasil diupdate.",
+            ]);
+        }
+
         return redirect()->route('rombel.tahun-ajaran.index')
             ->with('success', "Tahun ajaran {$tahunAjaran->nama} berhasil diupdate.");
     }
@@ -71,12 +96,21 @@ class RombelController extends Controller
     public function tahunAjaranDestroy(TahunAjaran $tahunAjaran)
     {
         if ($tahunAjaran->rombels()->count() > 0) {
+            if (request()->ajax() || request()->wantsJson()) {
+                return response()->json(['success' => false, 'message' => 'Tahun ajaran tidak bisa dihapus karena masih ada rombel yang terkait.'], 422);
+            }
             return back()->with('error', 'Tahun ajaran tidak bisa dihapus karena masih ada rombel yang terkait.');
         }
 
+        $nama = $tahunAjaran->nama;
         $tahunAjaran->delete();
+
+        if (request()->ajax() || request()->wantsJson()) {
+            return response()->json(['success' => true, 'message' => "Tahun ajaran {$nama} berhasil dihapus."]);
+        }
+
         return redirect()->route('rombel.tahun-ajaran.index')
-            ->with('success', "Tahun ajaran {$tahunAjaran->nama} berhasil dihapus.");
+            ->with('success', "Tahun ajaran {$nama} berhasil dihapus.");
     }
 
     // ── Rombel CRUD ──────────────────────────────────────────────────────────
@@ -128,11 +162,18 @@ class RombelController extends Controller
             ->exists();
 
         if ($exists) {
+            if ($request->ajax() || $request->wantsJson()) {
+                return response()->json(['success' => false, 'message' => "Rombel {$data['nama_rombel']} sudah ada untuk kelas dan tahun ajaran ini."], 422);
+            }
             return back()->withInput()
                 ->with('error', "Rombel {$data['nama_rombel']} sudah ada untuk kelas dan tahun ajaran ini.");
         }
 
         $rombel = Rombel::create($data);
+
+        if ($request->ajax() || $request->wantsJson()) {
+            return response()->json(['success' => true, 'message' => "Rombel {$rombel->nama_rombel} berhasil dibuat."]);
+        }
 
         return redirect()->route('rombel.show', $rombel)
             ->with('success', "Rombel {$rombel->nama_rombel} berhasil dibuat.");
@@ -158,6 +199,15 @@ class RombelController extends Controller
     {
         $kelasAktif       = Kelas::aktif()->orderBy('tingkat')->orderBy('nama_kelas')->get();
         $semuaTahunAjaran = TahunAjaran::orderByDesc('is_aktif')->orderByDesc('id')->get();
+
+        if (request()->wantsJson()) {
+            return response()->json([
+                'rombel'           => $rombel,
+                'kelasAktif'       => $kelasAktif,
+                'semuaTahunAjaran' => $semuaTahunAjaran,
+            ]);
+        }
+
         return view('rombel.edit', compact('rombel', 'kelasAktif', 'semuaTahunAjaran'));
     }
 
@@ -173,6 +223,10 @@ class RombelController extends Controller
 
         $rombel->update($data);
 
+        if ($request->ajax() || $request->wantsJson()) {
+            return response()->json(['success' => true, 'message' => "Rombel {$rombel->nama_rombel} berhasil diupdate."]);
+        }
+
         return redirect()->route('rombel.show', $rombel)
             ->with('success', "Rombel {$rombel->nama_rombel} berhasil diupdate.");
     }
@@ -180,11 +234,18 @@ class RombelController extends Controller
     public function destroy(Rombel $rombel)
     {
         if ($rombel->studentRombels()->count() > 0) {
+            if (request()->ajax() || request()->wantsJson()) {
+                return response()->json(['success' => false, 'message' => 'Rombel tidak bisa dihapus karena masih ada siswa yang terdaftar.'], 422);
+            }
             return back()->with('error', 'Rombel tidak bisa dihapus karena masih ada siswa yang terdaftar.');
         }
 
         $nama = $rombel->nama_rombel;
         $rombel->delete();
+
+        if (request()->ajax() || request()->wantsJson()) {
+            return response()->json(['success' => true, 'message' => "Rombel {$nama} berhasil dihapus."]);
+        }
 
         return redirect()->route('rombel.index')
             ->with('success', "Rombel {$nama} berhasil dihapus.");

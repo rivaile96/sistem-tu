@@ -44,7 +44,14 @@ class KelasController extends Controller
 
         $validated['is_aktif'] = $request->boolean('is_aktif', true);
 
-        Kelas::create($validated);
+        $kelas = Kelas::create($validated);
+
+        if ($request->ajax() || $request->wantsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => "Kelas {$kelas->nama_kelas} berhasil ditambahkan.",
+            ]);
+        }
 
         return redirect()->route('kelas.index')
             ->with('success', "Kelas {$validated['nama_kelas']} berhasil ditambahkan.");
@@ -52,11 +59,9 @@ class KelasController extends Controller
 
     public function edit(Kelas $kelas)
     {
-        $jenjang = DB::table('school_settings')->where('key', 'jenjang')->value('value') ?? 'SMA';
-        $tingkatMin = Kelas::tingkatMinimal();
-        $tingkatMax = Kelas::tingkatMaksimal();
-
-        return view('kelas.edit', compact('kelas', 'jenjang', 'tingkatMin', 'tingkatMax'));
+        // Query fresh from DB to bypass any caching issues
+        $data = \DB::table('kelas')->where('id', $kelas->id)->first();
+        return response()->json($data);
     }
 
     public function update(Request $request, Kelas $kelas)
@@ -78,23 +83,40 @@ class KelasController extends Controller
 
         $kelas->update($validated);
 
+        if ($request->ajax() || $request->wantsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => "Kelas {$kelas->nama_kelas} berhasil diperbarui.",
+            ]);
+        }
+
         return redirect()->route('kelas.index')
             ->with('success', "Kelas {$kelas->nama_kelas} berhasil diperbarui.");
     }
 
     public function destroy(Kelas $kelas)
     {
-        // Cek apakah masih ada siswa aktif
         $jumlahSiswaAktif = $kelas->activeStudents()->count();
         if ($jumlahSiswaAktif > 0) {
+            if (request()->ajax() || request()->wantsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "Tidak bisa hapus kelas {$kelas->nama_kelas} — masih ada {$jumlahSiswaAktif} siswa aktif.",
+                ], 422);
+            }
             return back()->with('error', "Tidak bisa hapus kelas {$kelas->nama_kelas} — masih ada {$jumlahSiswaAktif} siswa aktif.");
         }
 
         $nama = $kelas->nama_kelas;
-
-        // Lepas kelas_id dari students yang tersisa
         $kelas->students()->update(['kelas_id' => null]);
         $kelas->delete();
+
+        if (request()->ajax() || request()->wantsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => "Kelas {$nama} berhasil dihapus.",
+            ]);
+        }
 
         return redirect()->route('kelas.index')
             ->with('success', "Kelas {$nama} berhasil dihapus.");
