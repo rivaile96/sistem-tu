@@ -344,7 +344,15 @@
 
             <div class="info-box" style="text-align: right;">
                 <span class="info-label">Detail Pembayaran</span>
-                <div class="info-value">Tgl. Bayar: {{ $bill->updated_at ? \Carbon\Carbon::parse($bill->updated_at)->translatedFormat('d F Y') : date('d F Y') }}</div>
+                {{-- Phase 2.4: use paid_at as canonical payment date.
+                     Do NOT fabricate a date from updated_at for historical records. --}}
+                <div class="info-value">Tgl. Bayar:
+                    @if($bill->paid_at)
+                        {{ \Carbon\Carbon::parse($bill->paid_at)->translatedFormat('d F Y') }}
+                    @else
+                        <span style="color:#999; font-style:italic;">Tanggal pembayaran tidak tersedia</span>
+                    @endif
+                </div>
                 <div class="info-sub">Metode: <span style="text-transform: uppercase;">{{ $bill->payment_method ?? 'Tunai' }}</span></div>
             </div>
         </div>

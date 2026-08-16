@@ -16,20 +16,24 @@ class DashboardController extends Controller
         // ==========================================================
         // 1. DATA KEUANGAN HARI INI (Detailed Flow)
         // ==========================================================
-        
-        // A. Pemasukan dari Kantin/POS (Asumsi POS selalu Cash/Tunai)
+
+        // A. Pemasukan dari Kantin/POS — uses created_at (POS transaction lifecycle)
         $posToday = PosOrder::whereDate('created_at', today())
                             ->where('payment_status', 'PAID')
                             ->sum('payment_amount');
 
-        // B. Pemasukan Tagihan Sekolah (SPP, Gedung, dll) - TUNAI
-        $billCashToday = StudentBill::whereDate('updated_at', today())
+        // B. Pemasukan Tagihan Sekolah - TUNAI
+        // Phase 2.4: changed from updated_at → paid_at (canonical payment timestamp).
+        // whereNotNull('paid_at') excludes historical PAID records with no known payment time.
+        $billCashToday = StudentBill::whereDate('paid_at', today())
+                                    ->whereNotNull('paid_at')
                                     ->where('status', 'PAID')
                                     ->where('payment_method', 'CASH')
                                     ->sum('amount');
 
         // C. Pemasukan Tagihan Sekolah - MIDTRANS (Payment Gateway)
-        $billMidtransToday = StudentBill::whereDate('updated_at', today())
+        $billMidtransToday = StudentBill::whereDate('paid_at', today())
+                                        ->whereNotNull('paid_at')
                                         ->where('status', 'PAID')
                                         ->where('payment_method', 'MIDTRANS')
                                         ->sum('amount');
@@ -40,29 +44,30 @@ class DashboardController extends Controller
         // TOTAL CASH ONLY (POS + SPP Manual)
         $totalCashToday = $posToday + $billCashToday;
 
-
         // ==========================================================
         // 2. DATA KEUANGAN BULAN INI (Analisa Arus Uang)
         // ==========================================================
-        
-        // Kita hitung total bulan ini biar keliatan porsinya
-        $monthlyCash = StudentBill::whereMonth('updated_at', now()->month)
-                                  ->whereYear('updated_at', now()->year)
+
+        // Phase 2.4: changed from updated_at → paid_at.
+        // Records with paid_at = NULL are excluded (unknown payment timestamp).
+        $monthlyCash = StudentBill::whereMonth('paid_at', now()->month)
+                                  ->whereYear('paid_at', now()->year)
+                                  ->whereNotNull('paid_at')
                                   ->where('status', 'PAID')
                                   ->where('payment_method', 'CASH')
                                   ->sum('amount');
 
-        $monthlyMidtrans = StudentBill::whereMonth('updated_at', now()->month)
-                                      ->whereYear('updated_at', now()->year)
+        $monthlyMidtrans = StudentBill::whereMonth('paid_at', now()->month)
+                                      ->whereYear('paid_at', now()->year)
+                                      ->whereNotNull('paid_at')
                                       ->where('status', 'PAID')
                                       ->where('payment_method', 'MIDTRANS')
                                       ->sum('amount');
 
-
         // ==========================================================
         // 3. OPERATIONAL ALERTS
         // ==========================================================
-        
+
         // Siswa Nunggak (Yang punya minimal 1 tagihan UNPAID)
         $unpaidStudents = Student::whereHas('bills', function($q) {
             $q->where('status', 'UNPAID');
@@ -74,84 +79,89 @@ class DashboardController extends Controller
                                 ->limit(5)
                                 ->get();
 
-
         // ==========================================================
         // 4. GRAFIK 7 HARI TERAKHIR
         // ==========================================================
         $chartData = [];
         for ($i = 6; $i >= 0; $i--) {
             $date = Carbon::today()->subDays($i);
-            
-            // Pemasukan POS
+
+            // Pemasukan POS — uses created_at (POS transaction lifecycle, not changed)
             $pos = PosOrder::whereDate('created_at', $date)
                            ->where('payment_status', 'PAID')
                            ->sum('payment_amount');
-            
-            // Pemasukan Bill (Gabungan Cash + Midtrans)
-            $bill = StudentBill::whereDate('updated_at', $date)
+
+            // Pemasukan Bill — Phase 2.4: changed from updated_at → paid_at.
+            // whereNotNull excludes historical records with unknown payment date.
+            $bill = StudentBill::whereDate('paid_at', $date)
+                               ->whereNotNull('paid_at')
                                ->where('status', 'PAID')
                                ->sum('amount');
-            
+
             $chartData[] = [
-                'day' => $date->format('D'), // Mon, Tue, Wed...
+                'day'   => $date->format('D'), // Mon, Tue, Wed...
                 'total' => $pos + $bill
             ];
         }
         // Skala Grafik (Max Value)
-        $maxIncome = collect($chartData)->max('total') ?: 1; 
-
+        $maxIncome = collect($chartData)->max('total') ?: 1;
 
         // ==========================================================
         // 5. LOG AKTIVITAS TERBARU (Live Feed)
         // ==========================================================
-        
-        // Feed POS
+
+        // Feed POS — uses created_at (correct: POS transaction timestamp)
         $latestPos = PosOrder::with('user')->latest()->limit(5)->get()->map(function($item) {
             return [
-                'time' => $item->created_at,
-                'desc' => 'Jajan Kantin #' . $item->id,
+                'time'   => $item->created_at,
+                'desc'   => 'Jajan Kantin #' . $item->id,
                 'amount' => $item->total_amount,
-                'type' => 'POS',
+                'type'   => 'POS',
                 'method' => 'Cash' // POS default Cash
             ];
         });
 
-        // Feed SPP (Sekarang ada label Metodenya)
+        // Feed Bill — Phase 2.4: order by paid_at, display paid_at.
+        // Only includes records with a known paid_at (whereNotNull).
+        // Historical PAID records with paid_at = NULL are excluded from the live feed
+        // because their actual payment time is unknown and fabricating it is incorrect.
         $latestBill = StudentBill::with('student')
                                  ->where('status', 'PAID')
-                                 ->latest('updated_at')
+                                 ->whereNotNull('paid_at')
+                                 ->latest('paid_at')
                                  ->limit(5)
                                  ->get()
                                  ->map(function($item) {
-            // Label Method lebih rapi
-            $methodLabel = $item->payment_method == 'MIDTRANS' ? 'Online (App)' : 'Tunai (TU)';
-            
-            return [
-                'time' => $item->updated_at,
-                'desc' => 'Bayar Tagihan - ' . $item->student->name,
-                'amount' => $item->amount,
-                'type' => 'BILL',
-                'method' => $methodLabel
-            ];
-        });
+                                     $methodLabel = $item->payment_method == 'MIDTRANS'
+                                         ? 'Online (App)'
+                                         : 'Tunai (TU)';
+                                     return [
+                                         'time'   => $item->paid_at,   // canonical payment time
+                                         'desc'   => 'Bayar Tagihan - ' . $item->student->name,
+                                         'amount' => $item->amount,
+                                         'type'   => 'BILL',
+                                         'method' => $methodLabel
+                                     ];
+                                 });
 
         // Gabung, Sort by Time, Ambil 5 Teratas
-        // Wrap collect() dulu agar tidak crash getKey() saat merge Eloquent Collection dengan plain arrays
-        $recentActivities = collect($latestPos)->merge(collect($latestBill))->sortByDesc('time')->take(5);
+        $recentActivities = collect($latestPos)->merge(collect($latestBill))
+                                               ->sortByDesc('time')
+                                               ->take(5);
 
         // ==========================================================
         // RETURN VIEW
         // ==========================================================
         return view('dashboard', compact(
-            'totalIncomeToday', 
-            'billMidtransToday', // <--- Variabel Baru: Pemasukan Midtrans Hari Ini
-            'totalCashToday',    // <--- Variabel Baru: Pemasukan Cash Hari Ini
-            'monthlyCash',       // <--- Variabel Baru: Total Cash Bulan Ini
-            'monthlyMidtrans',   // <--- Variabel Baru: Total Midtrans Bulan Ini
-            'unpaidStudents', 
-            'lowStockItems', 
-            'chartData', 
-            'maxIncome', 
+            'totalIncomeToday',
+            'billMidtransToday',
+            'totalCashToday',
+            'monthlyCash',
+            'monthlyMidtrans',
+            'unpaidStudents',
+            'lowStockItems',
+            'chartData',
+            'maxIncome',
             'recentActivities'
         ));
     }

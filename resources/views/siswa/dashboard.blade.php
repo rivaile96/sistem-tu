@@ -214,7 +214,12 @@
                             <div class="flex-1 min-w-0">
                                 <p class="font-semibold text-gray-900 text-sm truncate">{{ $bill->name ?? 'Tagihan ' . $bill->bill_month . '/' . $bill->bill_year }}</p>
                                 <p class="text-xs text-gray-400 mt-0.5">
-                                    Dibayar {{ $bill->updated_at->isoFormat('D MMM Y') }}
+                                    {{-- Phase 2.4: use paid_at as canonical payment date --}}
+                        @if($bill->paid_at)
+                            Dibayar {{ $bill->paid_at->isoFormat('D MMM Y') }}
+                        @else
+                            Tanggal pembayaran tidak tersedia
+                        @endif
                                     @if($bill->payment_method)
                                         · <span class="capitalize">{{ $bill->payment_method }}</span>
                                     @endif

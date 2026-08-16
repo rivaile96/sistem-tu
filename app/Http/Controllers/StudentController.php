@@ -165,7 +165,32 @@ class StudentController extends Controller
     public function destroy($id)
     {
         $student = Student::findOrFail($id);
-        $nama    = $student->name;
+
+        // Phase 2.5: reject hard deletion for any non-calon_siswa status.
+        // Active, exited, graduated, and alumni students carry financial history
+        // that must not be destroyed. Use status change workflow instead.
+        if ($student->status !== 'calon_siswa') {
+            $msg = 'Siswa tidak dapat dihapus. Gunakan fitur Ubah Status untuk mengarsipkan siswa.';
+            if (request()->ajax() || request()->wantsJson()) {
+                return response()->json(['success' => false, 'message' => $msg], 422);
+            }
+            return back()->with('error', $msg);
+        }
+
+        // Phase 2.5: reject deletion of calon_siswa if they already have financial records.
+        if ($student->bills()->exists()) {
+            $msg = 'Calon siswa ini memiliki data tagihan dan tidak dapat dihapus. Arsipkan datanya melalui Ubah Status.';
+            if (request()->ajax() || request()->wantsJson()) {
+                return response()->json(['success' => false, 'message' => $msg], 422);
+            }
+            return back()->with('error', $msg);
+        }
+
+        $nama = $student->name;
+
+        // SoftDeletes trait: ->delete() sets deleted_at, does not issue DELETE.
+        // FK RESTRICT on student_bills is a DB-level backstop even if this
+        // guard is bypassed — DB will reject the hard delete if bills exist.
         $student->delete();
 
         if (request()->ajax() || request()->wantsJson()) {

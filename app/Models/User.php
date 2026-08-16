@@ -42,8 +42,32 @@ class User extends Authenticatable
     }
     
     // Helper untuk cek role lebih mudah: $user->hasRole('admin')
-    public function hasRole($role)
+    public function hasRole($role): bool
     {
         return $this->role === $role;
+    }
+
+    public function isAdmin(): bool
+    {
+        return $this->role === 'admin';
+    }
+
+    public function isTu(): bool
+    {
+        return $this->role === 'tu';
+    }
+
+    public function isKepalaSekolah(): bool
+    {
+        return $this->role === 'kepala_sekolah';
+    }
+
+    /**
+     * Returns true if the user can perform write/financial operations.
+     * Convenience helper — do not use as the sole authorization gate.
+     */
+    public function canManageFinance(): bool
+    {
+        return in_array($this->role, ['admin', 'tu'], true);
     }
 }

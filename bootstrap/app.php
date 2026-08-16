@@ -27,6 +27,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // Middleware alias
         $middleware->alias([
             'auth.siswa' => \App\Http\Middleware\AuthSiswa::class,
+            'role'       => \App\Http\Middleware\EnsureRole::class,
         ]);
 
     })

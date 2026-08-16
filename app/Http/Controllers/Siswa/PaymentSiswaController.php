@@ -3,7 +3,10 @@
 namespace App\Http\Controllers\Siswa;
 
 use App\Http\Controllers\Controller;
+use App\Models\AuditLog;
+use App\Models\PaymentAttempt;
 use App\Models\StudentBill;
+use App\Services\FinancialAuditLogger;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -38,6 +41,31 @@ class PaymentSiswaController extends Controller
             return response()->json(['error' => 'Tagihan ini sudah dibayar.'], 400);
         }
 
+        // Phase 3.7D: enforce ONE active pending attempt per bill.
+        // Lock the bill row to prevent concurrent initiation race conditions.
+        // If an existing pending attempt exists, return it immediately —
+        // no new Snap call, no supersession needed.
+        $existingAttempt = null;
+        DB::transaction(function () use ($bill, &$existingAttempt) {
+            // lockForUpdate() prevents a concurrent request from reading
+            // the same pending attempt and also creating a new one.
+            StudentBill::lockForUpdate()->find($bill->id);
+
+            $existingAttempt = PaymentAttempt::where('student_bill_id', $bill->id)
+                                             ->where('status', PaymentAttempt::STATUS_PENDING)
+                                             ->latest('initiated_at')
+                                             ->first();
+        });
+
+        if ($existingAttempt) {
+            return response()->json([
+                'snap_token'    => $existingAttempt->snap_token,
+                'client_key'    => config('services.midtrans.client_key'),
+                'order_id'      => $existingAttempt->order_id,
+                'is_production' => config('services.midtrans.is_production', false),
+            ]);
+        }
+
         // Order ID unik: BILL-{id}-{random}-{timestamp}
         $orderId = 'BILL-' . $bill->id . '-' . Str::random(6) . '-' . time();
 
@@ -68,11 +96,55 @@ class PaymentSiswaController extends Controller
         try {
             $snapToken = Snap::getSnapToken($params);
 
-            // Simpan snap token ke record tagihan untuk referensi UI.
-            // NOTE: payment_token = Snap token (NOT the order_id).
-            // order_id is embedded in the Snap token params above and will
-            // arrive back via webhook in payload['order_id'].
-            $bill->update(['payment_token' => $snapToken]);
+            // Phase 3.7D: supersede all pending attempts atomically inside
+            // the same transaction as the new attempt creation.
+            // lockForUpdate() on the bill prevents concurrent initiations from
+            // both passing the "no pending attempt" check simultaneously.
+            DB::transaction(function () use ($bill, $orderId, $snapToken, $request) {
+                StudentBill::lockForUpdate()->find($bill->id);
+
+                // Supersede any pending attempts that survived the pre-check
+                // (guards against the narrow race between the pre-check and here).
+                $superseded = PaymentAttempt::where('student_bill_id', $bill->id)
+                                            ->where('status', PaymentAttempt::STATUS_PENDING)
+                                            ->get();
+
+                foreach ($superseded as $old) {
+                    $old->update([
+                        'status'     => PaymentAttempt::STATUS_CANCEL,
+                        'expired_at' => now(),
+                    ]);
+                    FinancialAuditLogger::paymentAttemptCancelled(
+                        $old,
+                        AuditLog::SOURCE_WEB,
+                        null,
+                        $request
+                    );
+                }
+
+                $attempt = PaymentAttempt::create([
+                    'student_bill_id' => $bill->id,
+                    'order_id'        => $orderId,
+                    'snap_token'      => $snapToken,
+                    'status'          => PaymentAttempt::STATUS_PENDING,
+                    'gross_amount'    => $bill->amount,
+                    'initiated_at'    => now(),
+                    'source'          => PaymentAttempt::SOURCE_WEB,
+                ]);
+
+                // Maintain backward-compatible payment_token on the bill.
+                // payment_token always mirrors the active attempt's snap_token.
+                // PaymentAttempt.settled_at = Midtrans settlement_time (provider clock).
+                // StudentBill.paid_at       = application processing time (set in callback).
+                $bill->update(['payment_token' => $snapToken]);
+
+                FinancialAuditLogger::paymentAttemptCreated(
+                    $attempt,
+                    AuditLog::SOURCE_WEB,
+                    null,
+                    $request
+                );
+            });
 
             return response()->json([
                 'snap_token'    => $snapToken,
@@ -81,6 +153,10 @@ class PaymentSiswaController extends Controller
                 'is_production' => config('services.midtrans.is_production', false),
             ]);
         } catch (\Exception $e) {
+            Log::error('PaymentSiswaController::createToken failed', [
+                'bill_id' => $bill->id,
+                'error'   => $e->getMessage(),
+            ]);
             return response()->json([
                 'error' => 'Gagal membuat token pembayaran: ' . $e->getMessage(),
             ], 500);
@@ -229,14 +305,74 @@ class PaymentSiswaController extends Controller
         if (in_array($transactionStatus, ['settlement', 'capture']) && $fraudStatus === 'accept') {
 
             // Successful payment — persist all fields atomically.
-            DB::transaction(function () use ($bill, $orderId) {
+            // confirmed_by is explicitly NULL: Midtrans settlement is confirmed
+            // by the payment gateway, not by a TU operator.
+            DB::transaction(function () use ($bill, $orderId, $transactionStatus, $request, $payload) {
+
+                // ── Phase 3.7D: attempt-level idempotency ─────────────────────
+                // Look up the attempt for this specific order_id.
+                // If already terminal: write SETTLEMENT_IGNORED and return early.
+                // If pending: update it, then update the bill.
+                $attempt = PaymentAttempt::where('order_id', $orderId)->first();
+
+                if ($attempt) {
+                    if (in_array($attempt->status, PaymentAttempt::TERMINAL_STATUSES)) {
+                        // Attempt already settled/expired/cancelled — do NOT touch bill.
+                        // Log as an operational exception (user may have been charged).
+                        FinancialAuditLogger::paymentAttemptSettlementIgnored(
+                            $attempt,
+                            $payload,
+                            $request
+                        );
+                        Log::warning('Midtrans callback: settlement ignored — attempt already terminal', [
+                            'order_id'       => $orderId,
+                            'attempt_status' => $attempt->status,
+                            'bill_id'        => $bill->id,
+                        ]);
+                        return; // Early return — no bill mutation.
+                    }
+
+                    // Attempt is pending — settle it.
+                    // PaymentAttempt.settled_at = Midtrans settlement_time (provider clock).
+                    // StudentBill.paid_at       = application processing time (set below).
+                    $attempt->update([
+                        'status'         => $transactionStatus,
+                        'payment_method' => $payload['payment_type']              ?? null,
+                        'bank'           => $payload['bank']
+                                            ?? ($payload['va_numbers'][0]['bank'] ?? null),
+                        'va_number'      => $payload['va_numbers'][0]['va_number'] ?? null,
+                        'transaction_id' => $payload['transaction_id']            ?? null,
+                        'settled_at'     => $this->parseMidtransTimestamp(
+                                               $payload['settlement_time'] ?? ($payload['transaction_time'] ?? null)
+                                           ) ?? now(),
+                        'expired_at'     => null,
+                        'snap_token'     => null,
+                    ]);
+                } else {
+                    // Legacy webhook — no PaymentAttempt record exists.
+                    // Proceed with bill update only; do not fabricate an attempt.
+                    Log::info('Midtrans callback: legacy webhook — no PaymentAttempt found, bill updated directly', [
+                        'order_id' => $orderId,
+                        'bill_id'  => $bill->id,
+                    ]);
+                }
+
                 $bill->update([
                     'status'            => 'PAID',
-                    'paid_at'           => now(),
+                    'paid_at'           => now(),   // application clock — intentionally differs from settled_at
                     'payment_method'    => 'MIDTRANS',
+                    'confirmed_by'      => null,    // Phase 2.3: gateway-confirmed, no operator
                     'midtrans_order_id' => $orderId,
-                    'payment_token'     => null,    // clear active Snap token after success
+                    'payment_token'     => null,
                 ]);
+
+                $bill->refresh();
+                FinancialAuditLogger::paymentConfirmed(
+                    $bill,
+                    \App\Models\AuditLog::SOURCE_MIDTRANS,
+                    null,
+                    $request
+                );
             });
 
             Log::info('Midtrans callback: payment settled', [
@@ -251,10 +387,65 @@ class PaymentSiswaController extends Controller
 
             // Failed / expired — clear the active Snap token so the student
             // can initiate a fresh payment attempt. Bill stays UNPAID.
-            // paid_at is NOT set. midtrans_order_id is NOT set.
-            $bill->update([
-                'payment_token' => null,
-            ]);
+            // Phase 3.5: log PAYMENT_FAILED before clearing token (captures original token).
+            DB::transaction(function () use ($bill, $orderId, $transactionStatus, $request, $payload) {
+
+                // ── Phase 3.7D: attempt-level state machine ──────────────────
+                $attempt = PaymentAttempt::where('order_id', $orderId)->first();
+
+                if ($attempt && ! in_array($attempt->status, PaymentAttempt::TERMINAL_STATUSES)) {
+                    $attempt->update([
+                        'status'         => $transactionStatus,
+                        'payment_method' => $payload['payment_type']              ?? null,
+                        'bank'           => $payload['bank']
+                                            ?? ($payload['va_numbers'][0]['bank'] ?? null),
+                        'va_number'      => $payload['va_numbers'][0]['va_number'] ?? null,
+                        'transaction_id' => $payload['transaction_id']            ?? null,
+                        'expired_at'     => $this->parseMidtransTimestamp(
+                                               $payload['expiry_time'] ?? ($payload['transaction_time'] ?? null)
+                                           ) ?? now(),
+                        'snap_token'     => null,
+                    ]);
+                    $attemptWasMutated = true;
+                } elseif ($attempt && in_array($attempt->status, PaymentAttempt::TERMINAL_STATUSES)) {
+                    // Already terminal — idempotent, no re-write.
+                    Log::info('Midtrans callback: expire/cancel ignored — attempt already terminal', [
+                        'order_id'       => $orderId,
+                        'attempt_status' => $attempt->status,
+                    ]);
+                    $attemptWasMutated = false;
+                } else {
+                    Log::info('Midtrans callback: legacy webhook expire/cancel — no PaymentAttempt found', [
+                        'order_id' => $orderId,
+                        'bill_id'  => $bill->id,
+                        'status'   => $transactionStatus,
+                    ]);
+                    $attemptWasMutated = true; // legacy path — write PAYMENT_FAILED
+                }
+
+                // Only clear payment_token if no other pending attempt is active
+                // for this bill — prevents wiping a newer session's token.
+                $hasOtherPending = PaymentAttempt::where('student_bill_id', $bill->id)
+                    ->where('status', PaymentAttempt::STATUS_PENDING)
+                    ->where('order_id', '!=', $orderId)
+                    ->exists();
+
+                // PAYMENT_FAILED only written if:
+                //   a) the attempt was actually mutated (not already terminal), AND
+                //   b) the bill is not already PAID.
+                if ($attemptWasMutated && $bill->status !== 'PAID') {
+                    FinancialAuditLogger::paymentFailed(
+                        $bill,
+                        $transactionStatus,
+                        \App\Models\AuditLog::SOURCE_MIDTRANS,
+                        $request
+                    );
+
+                    if (! $hasOtherPending) {
+                        $bill->update(['payment_token' => null]);
+                    }
+                }
+            });
 
             Log::info('Midtrans callback: payment not completed', [
                 'order_id'           => $orderId,
@@ -284,6 +475,24 @@ class PaymentSiswaController extends Controller
         // ── End Transaction Status Handling ───────────────────────────────────
 
         return response()->json(['message' => 'OK'], 200);
+    }
+
+    /**
+     * Parse a Midtrans timestamp string into a Carbon instance.
+     * Midtrans uses "YYYY-MM-DD HH:MM:SS" in Asia/Jakarta timezone.
+     * Returns null if the value is empty or unparseable.
+     */
+    private function parseMidtransTimestamp(?string $value): ?\Carbon\Carbon
+    {
+        if (empty($value)) {
+            return null;
+        }
+        try {
+            return \Carbon\Carbon::createFromFormat('Y-m-d H:i:s', $value, 'Asia/Jakarta')
+                                  ->setTimezone(config('app.timezone', 'Asia/Jakarta'));
+        } catch (\Exception $e) {
+            return null;
+        }
     }
 
     /**

@@ -79,36 +79,42 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
     // 2. MANAJEMEN SISWA
+    // Read: all staff. Write/delete: admin + tu only.
     Route::prefix('students')->name('students.')->group(function () {
         Route::get('/', [StudentController::class, 'index'])->name('index');
-        Route::get('/create', [StudentController::class, 'create'])->name('create');
-        Route::post('/', [StudentController::class, 'store'])->name('store');
-        Route::get('/import', [StudentController::class, 'importForm'])->name('import');
-        Route::post('/import', [StudentController::class, 'importCsv'])->name('import.process');
-        Route::get('/template', [StudentController::class, 'downloadTemplate'])->name('template');
         Route::get('/{id}', [StudentController::class, 'show'])->name('show');
-        Route::get('/{id}/edit', [StudentController::class, 'edit'])->name('edit');
-        Route::put('/{id}', [StudentController::class, 'update'])->name('update');
-        Route::delete('/{id}', [StudentController::class, 'destroy'])->name('destroy');
+        Route::get('/{id}/finance', [StudentController::class, 'show'])->name('finance'); // backward compat
         Route::get('/{id}/status', [StudentController::class, 'formUbahStatus'])->name('ubah-status');
-        Route::post('/{id}/status', [StudentController::class, 'ubahStatus'])->name('ubah-status.process');
-        // Finance detail (backward compat)
-        Route::get('/{id}/finance', [StudentController::class, 'show'])->name('finance');
+
+        // Write operations — admin + tu only
+        Route::middleware('role:admin,tu')->group(function () {
+            Route::get('/create', [StudentController::class, 'create'])->name('create');
+            Route::post('/', [StudentController::class, 'store'])->name('store');
+            Route::get('/import', [StudentController::class, 'importForm'])->name('import');
+            Route::post('/import', [StudentController::class, 'importCsv'])->name('import.process');
+            Route::get('/template', [StudentController::class, 'downloadTemplate'])->name('template');
+            Route::get('/{id}/edit', [StudentController::class, 'edit'])->name('edit');
+            Route::put('/{id}', [StudentController::class, 'update'])->name('update');
+            Route::delete('/{id}', [StudentController::class, 'destroy'])->name('destroy');
+            Route::post('/{id}/status', [StudentController::class, 'ubahStatus'])->name('ubah-status.process');
+        });
     });
 
-    // NAIK KELAS MASSAL
-    Route::prefix('naik-kelas')->name('naik-kelas.')->group(function () {
+    // NAIK KELAS MASSAL — admin + tu only
+    Route::prefix('naik-kelas')->name('naik-kelas.')->middleware('role:admin,tu')->group(function () {
         Route::get('/', [NaikKelasController::class, 'index'])->name('index');
         Route::post('/preview', [NaikKelasController::class, 'preview'])->name('preview');
         Route::post('/eksekusi', [NaikKelasController::class, 'eksekusi'])->name('eksekusi');
     });
 
-    // MASTER KELAS
-    Route::post('kelas/update-jenjang', [KelasController::class, 'updateJenjang'])->name('kelas.update-jenjang');
-    Route::resource('kelas', KelasController::class)->except(['show']);
+    // MASTER KELAS — admin + tu only
+    Route::middleware('role:admin,tu')->group(function () {
+        Route::post('kelas/update-jenjang', [KelasController::class, 'updateJenjang'])->name('kelas.update-jenjang');
+        Route::resource('kelas', KelasController::class)->except(['show']);
+    });
 
-    // ── Tahun Ajaran ─────────────────────────────────────────────────────────
-    Route::prefix('tahun-ajaran')->name('tahun-ajaran.')->group(function () {
+    // ── Tahun Ajaran — admin + tu only ───────────────────────────────────────
+    Route::prefix('tahun-ajaran')->name('tahun-ajaran.')->middleware('role:admin,tu')->group(function () {
         Route::get('/',                [RombelController::class, 'tahunAjaranIndex'])->name('index');
         Route::get('/create',          [RombelController::class, 'tahunAjaranCreate'])->name('create');
         Route::post('/',               [RombelController::class, 'tahunAjaranStore'])->name('store');
@@ -117,27 +123,34 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::delete('/{tahunAjaran}',     [RombelController::class, 'tahunAjaranDestroy'])->name('destroy');
     });
 
-    // ── Rombel ───────────────────────────────────────────────────────────────
-    Route::resource('rombel', RombelController::class);
-    Route::post('rombel/{rombel}/assign-siswa',         [RombelController::class, 'assignSiswa'])->name('rombel.assign-siswa');
-    Route::delete('rombel/{rombel}/remove-siswa/{student}', [RombelController::class, 'removeSiswa'])->name('rombel.remove-siswa');
-
-    // 3. BILLING / TAGIHAN (SYSTEM BARU)
-    Route::controller(BillController::class)->prefix('bills')->name('bills.')->group(function () {
-        Route::get('/', 'index')->name('index'); 
-        Route::get('/create', 'create')->name('create'); 
-        Route::post('/', 'store')->name('store'); 
-        Route::get('/export', 'export')->name('export'); 
-        
-        // Aksi Spesifik per Tagihan (ID)
-        // Note: Pakai POST untuk bayar biar aman dari error method patch
-        Route::post('/{id}/pay', 'pay')->name('pay');        
-        Route::get('/{id}/print', 'print')->name('print');    
-        Route::delete('/{id}', 'destroy')->name('destroy');   
+    // ── Rombel — admin + tu only ──────────────────────────────────────────────
+    Route::middleware('role:admin,tu')->group(function () {
+        Route::resource('rombel', RombelController::class);
+        Route::post('rombel/{rombel}/assign-siswa',         [RombelController::class, 'assignSiswa'])->name('rombel.assign-siswa');
+        Route::delete('rombel/{rombel}/remove-siswa/{student}', [RombelController::class, 'removeSiswa'])->name('rombel.remove-siswa');
     });
 
-    // 4. POS (KANTIN & KOPERASI)
-    Route::prefix('pos')->name('pos.')->group(function () {
+    // 3. BILLING / TAGIHAN (SYSTEM BARU)
+    // Read/print/export: all staff.
+    // Create/pay/delete: admin + tu only.
+    Route::controller(BillController::class)->prefix('bills')->name('bills.')->group(function () {
+        // All authenticated staff
+        Route::get('/', 'index')->name('index');
+        Route::get('/export', 'export')->name('export');
+        Route::get('/{id}/print', 'print')->name('print');
+
+        // admin + tu only — payment confirmation and bill write operations
+        Route::middleware('role:admin,tu')->group(function () {
+            Route::get('/create', 'create')->name('create');
+            Route::post('/', 'store')->name('store');
+            Route::post('/{id}/pay', 'pay')->name('pay');       // Phase 3.2: role-gated
+            Route::delete('/{id}', 'destroy')->name('destroy'); // Phase 3.2: role-gated
+        });
+    });
+
+    // 4. POS (KANTIN & KOPERASI) — admin + tu only
+    // kepala_sekolah reads reports via the dashboard; POS operations are TU/admin.
+    Route::prefix('pos')->name('pos.')->middleware('role:admin,tu')->group(function () {
         // A. Master Barang
         Route::resource('items', PosItemController::class);
 
@@ -146,44 +159,48 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         // C. Kasir / Transaksi Harian
         Route::controller(PosTransactionController::class)->group(function() {
-            Route::get('/transaction', 'index')->name('transaction');       
-            Route::post('/transaction', 'store')->name('transaction.store'); 
-            Route::get('/transaction/{id}/print', 'printStruk')->name('transaction.print'); 
+            Route::get('/transaction', 'index')->name('transaction');
+            Route::post('/transaction', 'store')->name('transaction.store');
+            Route::get('/transaction/{id}/print', 'printStruk')->name('transaction.print');
         });
 
         // D. Laporan & Riwayat
         Route::controller(PosReportController::class)->prefix('history')->name('history.')->group(function() {
             Route::get('/', 'index')->name('index');
-            Route::post('/{id}/repay', 'repay')->name('repay'); 
+            Route::post('/{id}/repay', 'repay')->name('repay');
         });
     });
 
-    // 5. PENGATURAN SYSTEM (INTEGRASI)
-    Route::prefix('settings')->name('settings.')->group(function () {
+    // 5. PENGATURAN SYSTEM (INTEGRASI) — admin only
+    Route::prefix('settings')->name('settings.')->middleware('role:admin')->group(function () {
         Route::get('/integration', [IntegrationController::class, 'index'])->name('integration');
         Route::post('/integration', [IntegrationController::class, 'update'])->name('integration.update');
         Route::post('/integration/sync', [IntegrationController::class, 'sync'])->name('integration.sync');
     });
 
-    // 6. 🔥 IDENTITAS SEKOLAH (KOP SURAT & LOGO) 🔥
-    // Kita taruh diluar grup 'settings' biar URL-nya pendek: /school-settings
-    Route::controller(SchoolSettingController::class)->group(function() {
-        Route::get('/school-settings', 'index')->name('school.settings'); // Halaman Form
-        Route::post('/school-settings', 'update')->name('school.update'); // Proses Simpan
+    // 6. IDENTITAS SEKOLAH (KOP SURAT & LOGO) — admin only
+    Route::controller(SchoolSettingController::class)->middleware('role:admin')->group(function() {
+        Route::get('/school-settings', 'index')->name('school.settings');
+        Route::post('/school-settings', 'update')->name('school.update');
     });
 
     // 9. PPDB FLOW
+    // Read: all staff. Write/delete: admin + tu only.
     Route::prefix('ppdb')->name('ppdb.')->group(function () {
         Route::get('/', [PPDBController::class, 'index'])->name('index');
-        Route::get('/daftar', [PPDBController::class, 'create'])->name('create');
-        Route::post('/daftar', [PPDBController::class, 'store'])->name('store');
-        Route::get('/konversi', [PPDBController::class, 'konversiIndex'])->name('konversi');
-        Route::post('/konversi', [PPDBController::class, 'konversiEksekusi'])->name('konversi.eksekusi');
         Route::get('/{id}', [PPDBController::class, 'show'])->name('show');
-        Route::get('/{id}/edit', [PPDBController::class, 'edit'])->name('edit');
-        Route::put('/{id}', [PPDBController::class, 'update'])->name('update');
-        Route::post('/{id}/seleksi', [PPDBController::class, 'seleksi'])->name('seleksi');
-        Route::delete('/{id}', [PPDBController::class, 'destroy'])->name('destroy');
+
+        // admin + tu only
+        Route::middleware('role:admin,tu')->group(function () {
+            Route::get('/daftar', [PPDBController::class, 'create'])->name('create');
+            Route::post('/daftar', [PPDBController::class, 'store'])->name('store');
+            Route::get('/konversi', [PPDBController::class, 'konversiIndex'])->name('konversi');
+            Route::post('/konversi', [PPDBController::class, 'konversiEksekusi'])->name('konversi.eksekusi');
+            Route::get('/{id}/edit', [PPDBController::class, 'edit'])->name('edit');
+            Route::put('/{id}', [PPDBController::class, 'update'])->name('update');
+            Route::post('/{id}/seleksi', [PPDBController::class, 'seleksi'])->name('seleksi');
+            Route::delete('/{id}', [PPDBController::class, 'destroy'])->name('destroy');
+        });
     });
 
     // 7. LEGACY SPP (Sistem Lama - Opsional)

@@ -123,7 +123,12 @@
                     <div class="flex items-start justify-between gap-4">
                         <span class="text-xs text-gray-400 shrink-0 pt-0.5 w-28">Tanggal Bayar</span>
                         <span class="text-sm font-semibold text-gray-800 text-right">
-                            {{ \Carbon\Carbon::parse($bill->updated_at)->locale('id')->isoFormat('D MMMM YYYY, HH:mm') }}
+                            {{-- Phase 2.4: paid_at is the canonical payment timestamp. --}}
+                @if($bill->paid_at)
+                    {{ \Carbon\Carbon::parse($bill->paid_at)->locale('id')->isoFormat('D MMMM YYYY, HH:mm') }}
+                @else
+                    <span class="italic text-gray-400">Tanggal pembayaran tidak tersedia</span>
+                @endif
                         </span>
                     </div>
 

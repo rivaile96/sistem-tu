@@ -15,7 +15,7 @@ return new class extends Migration
         Schema::table('users', function (Blueprint $table) {
             // Tambahkan kolom role jika belum ada
             if (!Schema::hasColumn('users', 'role')) {
-                $table->enum('role', ['admin', 'tu', 'student'])->default('student')->after('email');
+                $table->enum('role', ['admin', 'tu', 'student', 'kepala_sekolah'])->default('student')->after('email');
             }
             if (!Schema::hasColumn('users', 'phone')) {
                 $table->string('phone')->nullable()->after('name');
@@ -69,7 +69,7 @@ return new class extends Migration
         if (!Schema::hasTable('audit_logs')) {
             Schema::create('audit_logs', function (Blueprint $table) {
                 $table->id();
-                $table->foreignId('user_id')->constrained()->onDelete('cascade'); // Siapa pelakunya
+                $table->foreignId('user_id')->nullable()->constrained()->nullOnDelete(); // Siapa pelakunya (nullable: gateway/system events have no user)
                 $table->string('action'); // CREATE, UPDATE, DELETE, LOGIN
                 $table->string('module'); // SPP, POS, STUDENT
                 $table->text('description')->nullable(); // Detail perubahan (JSON atau text)

@@ -282,8 +282,21 @@ class PPDBController extends Controller
             return back()->with('error', 'Hanya calon siswa yang bisa dihapus via PPDB.');
         }
 
+        // Phase 2.5: reject deletion if calon_siswa already has financial records.
+        // A PPDB applicant who received a bill has entered the financial system
+        // and their history must be preserved.
+        if ($siswa->bills()->exists()) {
+            $msg = 'Calon siswa ini memiliki data tagihan dan tidak dapat dihapus.';
+            if (request()->ajax() || request()->wantsJson()) {
+                return response()->json(['success' => false, 'message' => $msg], 422);
+            }
+            return back()->with('error', $msg);
+        }
+
         $nama = $siswa->name;
+        // statusLogs are non-financial audit records — safe to delete with the applicant.
         $siswa->statusLogs()->delete();
+        // SoftDeletes: sets deleted_at, does not physically delete the row.
         $siswa->delete();
 
         if (request()->ajax() || request()->wantsJson()) {
