@@ -17,10 +17,18 @@ class PosBundleController extends Controller
 {
     public function index()
     {
-        $bundles  = PosBundle::with('bundleItems.posItem')->latest()->get();
+        $bundles  = PosBundle::with('items.product')->latest()->paginate(12);
         $products = PosItem::where('stock', '>', 0)->get();
 
-        return view('pos.bundles.index', compact('bundles', 'products'));
+        // Hitung stats di controller — bukan di view — agar tidak crash
+        // saat $bundles adalah Paginator (bukan Collection).
+        $totalBundles  = PosBundle::count();
+        $activeBundles = PosBundle::where('is_active', true)->count();
+        $avgItems      = $totalBundles > 0
+            ? round(PosBundle::withCount('items')->get()->avg('items_count'), 1)
+            : 0;
+
+        return view('pos.bundles.index', compact('bundles', 'products', 'totalBundles', 'activeBundles', 'avgItems'));
     }
 
     public function create()
@@ -74,7 +82,7 @@ class PosBundleController extends Controller
 
     public function edit($id)
     {
-        $bundle   = PosBundle::with('items.posItem')->findOrFail($id);
+        $bundle   = PosBundle::with('items.product')->findOrFail($id);
         $products = PosItem::where('stock', '>', 0)->get();
 
         if (request()->wantsJson()) {

@@ -38,11 +38,11 @@
             <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
                 <div class="bg-gradient-to-br from-white to-slate-50 rounded-2xl p-6 border border-slate-100 shadow-lg">
                     <p class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Total Paket</p>
-                    <p class="text-4xl font-black text-slate-800">{{ $bundles->count() }}</p>
+                    <p class="text-4xl font-black text-slate-800">{{ $totalBundles }}</p>
                 </div>
                 <div class="bg-gradient-to-br from-white to-slate-50 rounded-2xl p-6 border border-slate-100 shadow-lg">
                     <p class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Paket Aktif</p>
-                    <p class="text-4xl font-black text-emerald-600">{{ $bundles->where('is_active', true)->count() }}</p>
+                    <p class="text-4xl font-black text-emerald-600">{{ $activeBundles }}</p>
                 </div>
                 <div class="bg-gradient-to-br from-white to-slate-50 rounded-2xl p-6 border border-slate-100 shadow-lg">
                     <p class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Total Produk</p>
@@ -51,7 +51,7 @@
                 <div class="bg-gradient-to-br from-white to-slate-50 rounded-2xl p-6 border border-slate-100 shadow-lg">
                     <p class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Rata-rata Item</p>
                     <p class="text-4xl font-black text-violet-600">
-                        {{ $bundles->count() > 0 ? number_format($bundles->avg(fn($b) => $b->bundleItems->count()), 1) : 0 }}
+                        {{ number_format($avgItems, 1) }}
                     </p>
                 </div>
             </div>
@@ -95,20 +95,20 @@
                             </div>
                             <div class="text-right">
                                 <p class="text-xs text-slate-400 font-medium">Item</p>
-                                <p class="text-xl font-black text-slate-700">{{ $bundle->bundleItems->count() }}</p>
+                                <p class="text-xl font-black text-slate-700">{{ $bundle->items->count() }}</p>
                             </div>
                         </div>
 
-                        @if($bundle->bundleItems->count())
+                        @if($bundle->items->count())
                         <div class="bg-slate-50 rounded-xl p-3 mb-4 space-y-1.5">
-                            @foreach($bundle->bundleItems->take(3) as $item)
+                            @foreach($bundle->items->take(3) as $item)
                             <div class="flex justify-between text-xs text-slate-600">
                                 <span class="truncate mr-2">{{ $item->product->name ?? 'Produk dihapus' }}</span>
                                 <span class="shrink-0 font-medium">×{{ $item->quantity }}</span>
                             </div>
                             @endforeach
-                            @if($bundle->bundleItems->count() > 3)
-                            <p class="text-xs text-slate-400">+{{ $bundle->bundleItems->count() - 3 }} item lainnya</p>
+                            @if($bundle->items->count() > 3)
+                            <p class="text-xs text-slate-400">+{{ $bundle->items->count() - 3 }} item lainnya</p>
                             @endif
                         </div>
                         @endif

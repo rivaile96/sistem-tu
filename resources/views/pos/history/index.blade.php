@@ -243,7 +243,7 @@
                                         </a>
 
                                         @if($trx->payment_status == 'UNPAID')
-                                            <button onclick="confirmRepay('{{ $trx->id }}', '{{ $trx->student->name ?? 'Siswa' }}', '{{ number_format($trx->total_amount, 0,',','.') }}')"
+                                            <button onclick="confirmRepay('{{ $trx->id }}', '{{ optional($trx->student)->name ?? 'Siswa' }}', '{{ number_format($trx->total_amount, 0,',','.') }}')"
                                                     class="group bg-gradient-to-r from-purple-600 to-purple-500 hover:from-purple-700 hover:to-purple-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-lg transition-all transform hover:-translate-y-0.5 flex items-center gap-2">
                                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"></path>
