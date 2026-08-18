@@ -9,14 +9,14 @@
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"></path>
                         </svg>
                     </div>
-                    <h1 class="text-3xl font-bold text-gray-900">PPDB — Calon Siswa</h1>
+                    <h1 class="text-3xl font-bold text-gray-900">Registrasi Siswa Baru — Calon Siswa</h1>
                 </div>
                 <nav class="flex items-center gap-2 ml-12 text-sm text-gray-500">
                     <a href="{{ route('dashboard') }}" class="hover:text-[#0284c7] transition-colors">Dashboard</a>
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
                     </svg>
-                    <span class="text-gray-700 font-medium">PPDB</span>
+                    <span class="text-gray-700 font-medium">Registrasi Siswa Baru</span>
                 </nav>
             </div>
 
@@ -26,7 +26,7 @@
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path>
                     </svg>
-                    <span>Konversi Massal</span>
+                    <span>Aktivasi Massal</span>
                 </a>
                 <button onclick="openModal('modalCreate')"
                         class="flex items-center gap-2 bg-[#0284c7] text-white px-4 py-2.5 rounded-xl hover:bg-[#0369a1] transition-all duration-300 font-medium shadow-sm text-sm">
@@ -37,6 +37,23 @@
                 </button>
             </div>
         </div>
+
+        <!-- Stat Cards -->
+        @if(session('aktivasi_gagal') && count(session('aktivasi_gagal')) > 0)
+        <div class="bg-amber-50 border border-amber-200 rounded-xl px-5 py-4 mb-6">
+            <div class="flex items-center gap-2 mb-2">
+                <svg class="w-5 h-5 text-amber-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+                <span class="font-bold text-amber-700">{{ count(session('aktivasi_gagal')) }} siswa gagal diaktifkan:</span>
+            </div>
+            <ul class="list-disc list-inside text-sm text-amber-700 space-y-0.5">
+                @foreach(session('aktivasi_gagal') as $gagalMsg)
+                    <li>{{ $gagalMsg }}</li>
+                @endforeach
+            </ul>
+        </div>
+        @endif
 
         <!-- Stat Cards -->
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
@@ -166,9 +183,9 @@
                                             class="bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors">
                                         Edit
                                     </button>
-                                    <a href="{{ route('ppdb.konversi-satu', $calon) }}"
+                                    <a href="{{ route('ppdb.show', $calon) }}"
                                        class="bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors">
-                                        Konversi
+                                        Aktivasi
                                     </a>
                                     <button onclick="confirmDeletePPDB('{{ route('ppdb.destroy', $calon) }}', '{{ $calon->name }}')"
                                             class="bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors">
@@ -481,7 +498,7 @@ document.getElementById('formEdit').addEventListener('submit', async function(e)
 // ── Delete ──
 function confirmDeletePPDB(url, nama) {
     Swal.fire({
-        title: 'Hapus Data PPDB?',
+        title: 'Hapus Data Calon Siswa?',
         text: `"${nama}" akan dihapus permanen!`,
         icon: 'warning',
         showCancelButton: true,

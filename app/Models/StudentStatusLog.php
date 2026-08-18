@@ -24,8 +24,13 @@ class StudentStatusLog extends Model
         return $this->belongsTo(\App\Models\User::class, 'diubah_oleh');
     }
 
-    // Alias untuk kompatibilitas view
-    public function statusChangedBy()
+    /**
+     * Alias 'changedBy' untuk view/komponen yang memakai nama generik.
+     * Menggantikan alias lama 'statusChangedBy' yang bentrok dengan
+     * relasi Student::statusChangedBy() (FK berbeda: status_changed_by).
+     * Keduanya menuju User, tapi lewat kolom FK yang berlainan.
+     */
+    public function changedBy()
     {
         return $this->belongsTo(\App\Models\User::class, 'diubah_oleh');
     }

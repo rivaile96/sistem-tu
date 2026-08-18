@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Kelas;
 use App\Models\Student;
 use App\Models\StudentStatusLog;
 use App\Models\PosOrder;
@@ -14,14 +15,16 @@ use League\Csv\Reader;
 
 class StudentController extends Controller
 {
+    // =========================================================================
+    // LISTING & SEARCH
+    // =========================================================================
+
     public function index(Request $request)
     {
-        $classes = Student::select('class_name')
-            ->distinct()
-            ->orderBy('class_name')
-            ->pluck('class_name');
+        // Filter dropdown sourced from master kelas — not free-text class_name
+        $kelasList = Kelas::aktif()->orderBy('tingkat')->orderBy('nama_kelas')->get();
 
-        $query = Student::query();
+        $query = Student::with('kelas');
 
         if ($request->search) {
             $query->where(function ($q) use ($request) {
@@ -31,8 +34,9 @@ class StudentController extends Controller
             });
         }
 
-        if ($request->class_name) {
-            $query->where('class_name', $request->class_name);
+        // Primary filter: kelas_id (canonical — class_name dropped Phase 9.3)
+        if ($request->kelas_id) {
+            $query->where('kelas_id', $request->kelas_id);
         }
 
         if ($request->status) {
@@ -43,25 +47,31 @@ class StudentController extends Controller
             $query->where('gender', $request->gender);
         }
 
-        $students = $query->orderBy('class_name')
-            ->orderBy('name')
+        $students = $query->orderBy('name')
             ->paginate(20)
             ->withQueryString();
 
         $stats = [
-            'total'         => Student::count(),
-            'aktif'         => Student::where('status', 'active')->count(),
-            'tidak_aktif'   => Student::whereNotIn('status', ['active', 'calon_siswa'])->count(),
-            'calon'         => Student::where('status', 'calon_siswa')->count(),
+            'total'       => Student::count(),
+            'aktif'       => Student::where('status', 'active')->count(),
+            'tidak_aktif' => Student::whereNotIn('status', ['active', 'calon_siswa'])->count(),
+            'calon'       => Student::where('status', 'calon_siswa')->count(),
         ];
 
-        return view('students.index', compact('students', 'classes', 'stats'));
+        return view('students.index', compact('students', 'kelasList', 'stats'));
     }
+
+    // =========================================================================
+    // FLOW B — DIRECT ADMINISTRATIVE ENTRY
+    // Purpose : TU adds an already-enrolled student or migrates from old system.
+    // Result  : status = active immediately, NIS + kelas_id both required.
+    // NOT for new student registration — use PPDBController for that (Flow A).
+    // =========================================================================
 
     public function create()
     {
-        $statuses = Student::STATUSES;
-        return view('students.create', compact('statuses'));
+        $kelasList = Kelas::aktif()->orderBy('tingkat')->orderBy('nama_kelas')->get();
+        return view('students.create', compact('kelasList'));
     }
 
     public function store(Request $request)
@@ -70,46 +80,57 @@ class StudentController extends Controller
             'nis'         => 'required|string|max:20|unique:students,nis',
             'nisn'        => 'nullable|string|max:20|unique:students,nisn',
             'name'        => 'required|string|max:255',
-            'gender'      => 'nullable|in:L,P',
-            'class_name'  => 'required|string|max:50',
+            'gender'      => 'required|in:L,P',
+            'kelas_id'    => 'required|exists:kelas,id',
             'birth_place' => 'nullable|string|max:100',
             'birth_date'  => 'nullable|date',
             'address'     => 'nullable|string',
             'agama'       => 'nullable|string|max:20',
             'tahun_masuk' => 'nullable|digits:4',
             'parent_phone'=> 'nullable|string|max:20',
-            'status'      => 'nullable|in:' . implode(',', array_keys(Student::STATUSES)),
         ]);
 
-        $validated['status'] = $validated['status'] ?? 'active';
+        // Phase 9.3: class_name column dropped — kelas_id is sole FK to kelas
+        $kelas = Kelas::findOrFail($validated['kelas_id']);
 
-        $student = Student::create($validated);
+        DB::transaction(function () use ($validated, $kelas) {
+            $student = Student::create(array_merge(
+                collect($validated)->except('kelas_id')->toArray(),
+                [
+                    'kelas_id'          => $kelas->id,
+                    'status'            => 'active',
+                    'status_changed_at' => now(),
+                    'status_changed_by' => Auth::id(),
+                ]
+            ));
 
-        StudentStatusLog::create([
-            'student_id'  => $student->id,
-            'status_lama' => null,
-            'status_baru' => $student->status,
-            'catatan'     => 'Data siswa dibuat',
-            'diubah_oleh' => Auth::id(),
-        ]);
+            StudentStatusLog::create([
+                'student_id'  => $student->id,
+                'status_lama' => null,
+                'status_baru' => 'active',
+                'catatan'     => 'Input langsung TU — siswa aktif (kelas: ' . $kelas->nama_kelas . ')',
+                'diubah_oleh' => Auth::id(),
+            ]);
+        });
 
         if ($request->ajax() || $request->wantsJson()) {
-            return response()->json([
-                'success' => true,
-                'message' => "Siswa {$student->name} berhasil ditambahkan.",
-            ]);
+            return response()->json(['success' => true, 'message' => 'Siswa berhasil ditambahkan.']);
         }
 
         return redirect()->route('students.index')
-            ->with('success', "Siswa {$student->name} berhasil ditambahkan.");
+            ->with('success', 'Data siswa berhasil ditambahkan.');
     }
+
+    // =========================================================================
+    // SHOW
+    // =========================================================================
 
     public function show($id)
     {
-        $student = Student::findOrFail($id);
+        $student = Student::with('kelas')->findOrFail($id);
 
         $posTransactions = PosOrder::where('student_id', $id)->latest()->get();
-        $debtPos = $posTransactions->where('payment_status', 'UNPAID')->sum('total_amount');
+        $debtPos         = $posTransactions->where('payment_status', 'UNPAID')->sum('total_amount');
 
         $statusLogs = StudentStatusLog::where('student_id', $id)
             ->with('diubahOleh')
@@ -119,28 +140,43 @@ class StudentController extends Controller
         return view('students.show', compact('student', 'posTransactions', 'debtPos', 'statusLogs'));
     }
 
+    // =========================================================================
+    // EDIT / UPDATE
+    // =========================================================================
+
     public function edit($id)
     {
-        $student  = Student::findOrFail($id);
-        $statuses = Student::STATUSES;
+        $student   = Student::with('kelas')->findOrFail($id);
+        $kelasList = Kelas::aktif()->orderBy('tingkat')->orderBy('nama_kelas')->get();
+        $statuses  = Student::STATUSES;
 
         if (request()->wantsJson()) {
-            return response()->json(array_merge($student->toArray(), ['statuses' => $statuses]));
+            return response()->json(array_merge($student->toArray(), [
+                'statuses'  => $statuses,
+                'kelas_list' => $kelasList,
+            ]));
         }
 
-        return view('students.edit', compact('student', 'statuses'));
+        return view('students.edit', compact('student', 'kelasList', 'statuses'));
     }
 
     public function update(Request $request, $id)
     {
         $student = Student::findOrFail($id);
 
+        // kelas_id wajib hanya untuk siswa aktif dan pindah_masuk.
+        // Siswa non-aktif (lulus, keluar, alumni, pindah_keluar) boleh tanpa kelas.
+        $activeStatuses = ['active', 'pindah_masuk'];
+        $kelasRule = in_array($student->status, $activeStatuses)
+            ? 'required|exists:kelas,id'
+            : 'nullable|exists:kelas,id';
+
         $validated = $request->validate([
             'nis'         => 'required|string|max:20|unique:students,nis,' . $id,
             'nisn'        => 'nullable|string|max:20|unique:students,nisn,' . $id,
             'name'        => 'required|string|max:255',
-            'gender'      => 'nullable|in:L,P',
-            'class_name'  => 'required|string|max:50',
+            'gender'      => 'required|in:L,P',
+            'kelas_id'    => $kelasRule,
             'birth_place' => 'nullable|string|max:100',
             'birth_date'  => 'nullable|date',
             'address'     => 'nullable|string',
@@ -149,7 +185,17 @@ class StudentController extends Controller
             'parent_phone'=> 'nullable|string|max:20',
         ]);
 
-        $student->update($validated);
+        // Phase 9.3: class_name column dropped
+        $updateData = collect($validated)->except('kelas_id')->toArray();
+        if (!empty($validated['kelas_id'])) {
+            $kelas = Kelas::findOrFail($validated['kelas_id']);
+            $updateData['kelas_id'] = $kelas->id;
+        } elseif (array_key_exists('kelas_id', $validated) && $validated['kelas_id'] === null) {
+            // Explicitly allow clearing kelas for non-active students
+            $updateData['kelas_id'] = null;
+        }
+
+        $student->update($updateData);
 
         if ($request->ajax() || $request->wantsJson()) {
             return response()->json([
@@ -162,13 +208,14 @@ class StudentController extends Controller
             ->with('success', "Data siswa {$student->name} berhasil diperbarui.");
     }
 
+    // =========================================================================
+    // DELETE
+    // =========================================================================
+
     public function destroy($id)
     {
         $student = Student::findOrFail($id);
 
-        // Phase 2.5: reject hard deletion for any non-calon_siswa status.
-        // Active, exited, graduated, and alumni students carry financial history
-        // that must not be destroyed. Use status change workflow instead.
         if ($student->status !== 'calon_siswa') {
             $msg = 'Siswa tidak dapat dihapus. Gunakan fitur Ubah Status untuk mengarsipkan siswa.';
             if (request()->ajax() || request()->wantsJson()) {
@@ -177,9 +224,8 @@ class StudentController extends Controller
             return back()->with('error', $msg);
         }
 
-        // Phase 2.5: reject deletion of calon_siswa if they already have financial records.
         if ($student->bills()->exists()) {
-            $msg = 'Calon siswa ini memiliki data tagihan dan tidak dapat dihapus. Arsipkan datanya melalui Ubah Status.';
+            $msg = 'Calon siswa ini memiliki data tagihan dan tidak dapat dihapus.';
             if (request()->ajax() || request()->wantsJson()) {
                 return response()->json(['success' => false, 'message' => $msg], 422);
             }
@@ -187,22 +233,19 @@ class StudentController extends Controller
         }
 
         $nama = $student->name;
-
-        // SoftDeletes trait: ->delete() sets deleted_at, does not issue DELETE.
-        // FK RESTRICT on student_bills is a DB-level backstop even if this
-        // guard is bypassed — DB will reject the hard delete if bills exist.
-        $student->delete();
+        $student->delete(); // SoftDeletes — sets deleted_at only
 
         if (request()->ajax() || request()->wantsJson()) {
-            return response()->json([
-                'success' => true,
-                'message' => "Data siswa {$nama} berhasil dihapus.",
-            ]);
+            return response()->json(['success' => true, 'message' => "Data siswa {$nama} berhasil dihapus."]);
         }
 
         return redirect()->route('students.index')
             ->with('success', "Data siswa {$nama} berhasil dihapus.");
     }
+
+    // =========================================================================
+    // STATUS MANAGEMENT
+    // =========================================================================
 
     public function formUbahStatus($id)
     {
@@ -233,12 +276,22 @@ class StudentController extends Controller
             return back()->with('info', 'Status siswa tidak berubah.');
         }
 
+        // 5.3 — Status hardening: transitioning TO active requires NIS + kelas_id
+        if ($statusBaru === 'active') {
+            if (empty($student->nis)) {
+                return back()->with('error', 'Tidak dapat mengaktifkan siswa: NIS belum diisi. Lengkapi data siswa terlebih dahulu.');
+            }
+            if (empty($student->kelas_id)) {
+                return back()->with('error', 'Tidak dapat mengaktifkan siswa: Kelas belum ditetapkan. Lengkapi data siswa terlebih dahulu.');
+            }
+        }
+
         DB::transaction(function () use ($student, $statusLama, $statusBaru, $request) {
             $student->update([
-                'status'             => $statusBaru,
-                'status_notes'       => $request->catatan,
-                'status_changed_at'  => now(),
-                'status_changed_by'  => Auth::id(),
+                'status'            => $statusBaru,
+                'status_notes'      => $request->catatan,
+                'status_changed_at' => now(),
+                'status_changed_by' => Auth::id(),
             ]);
 
             StudentStatusLog::create([
@@ -256,6 +309,12 @@ class StudentController extends Controller
             ->with('success', "Status {$student->name} diubah menjadi {$labelBaru}.");
     }
 
+    // =========================================================================
+    // CSV IMPORT
+    // Active-student migration tool — creates status=active directly.
+    // nama_kelas column is validated against master kelas table.
+    // =========================================================================
+
     public function importForm()
     {
         return view('students.import');
@@ -270,8 +329,45 @@ class StudentController extends Controller
         $path = $request->file('file')->getRealPath();
 
         try {
+            // ── 1. Strip UTF-8 BOM (Excel/Windows CSVs) ──────────────────────
+            $raw = file_get_contents($path);
+            if (str_starts_with($raw, "\xEF\xBB\xBF")) {
+                $raw = substr($raw, 3);
+                file_put_contents($path, $raw);
+            }
+
+            // ── 2. Auto-detect delimiter (comma vs semicolon) ─────────────────
+            $firstLine  = strtok($raw, "\n");
+            $delimiter  = substr_count($firstLine, ';') > substr_count($firstLine, ',') ? ';' : ',';
+
             $csv = Reader::createFromPath($path, 'r');
+            $csv->setDelimiter($delimiter);
             $csv->setHeaderOffset(0);
+
+            // ── 3. Validate required columns exist in header ──────────────────
+            $headers  = $csv->getHeader();
+            $required = ['nis', 'name', 'nama_kelas'];
+            $missing  = array_diff($required, $headers);
+            if ($missing) {
+                return back()->with('error',
+                    'Format CSV tidak valid. Kolom wajib tidak ditemukan: ' . implode(', ', $missing) .
+                    '. Gunakan template yang tersedia. (Header ditemukan: ' . implode(', ', $headers) . ')');
+            }
+
+            // ── 4. Pre-load kelas map: lowercase(nama_kelas) => [id, original] ─
+            $kelasRaw = Kelas::aktif()->pluck('id', 'nama_kelas')->toArray();
+            // Build case-insensitive lookup
+            $kelasMap = [];
+            foreach ($kelasRaw as $nama => $id) {
+                $kelasMap[mb_strtolower(trim($nama))] = ['id' => $id, 'original' => $nama];
+            }
+            $availableKelas = implode(', ', array_column($kelasMap, 'original'));
+
+            // ── 4b. Pre-load existing NIS & NISN to avoid N+1 queries ─────
+            // Keyed by value for O(1) lookup — withTrashed agar soft-deleted
+            // students juga terdeteksi sebagai duplikat.
+            $existingNis  = Student::withTrashed()->pluck('nis', 'nis')->toArray();
+            $existingNisn = Student::withTrashed()->whereNotNull('nisn')->pluck('nisn', 'nisn')->toArray();
 
             $records  = $csv->getRecords();
             $inserted = 0;
@@ -279,42 +375,73 @@ class StudentController extends Controller
             $errors   = [];
 
             foreach ($records as $offset => $row) {
-                $row = array_map('trim', $row);
+                $row    = array_map('trim', $row);
+                $lineNo = $offset + 2;
+                $rowErrors = [];
 
-                if (empty($row['nis']) || empty($row['name']) || empty($row['class_name'])) {
-                    $errors[] = "Baris " . ($offset + 2) . ": NIS, Nama, atau Kelas kosong — dilewati.";
+                // ── 5. Collect ALL errors per row before skipping ─────────────
+
+                // Required fields
+                if (empty($row['nis']))        $rowErrors[] = 'kolom nis kosong';
+                if (empty($row['name']))       $rowErrors[] = 'kolom name kosong';
+                if (empty($row['nama_kelas'])) $rowErrors[] = 'kolom nama_kelas kosong';
+
+                // Kelas lookup (case-insensitive)
+                $kelasId = null;
+                if (!empty($row['nama_kelas'])) {
+                    $kelasKey = mb_strtolower(trim($row['nama_kelas']));
+                    if (isset($kelasMap[$kelasKey])) {
+                        $kelasId = $kelasMap[$kelasKey]['id'];
+                    } else {
+                        $rowErrors[] = "kelas '{$row['nama_kelas']}' tidak ditemukan di master kelas (tersedia: {$availableKelas})";
+                    }
+                }
+
+                // Duplicate NIS — uses preloaded set, no per-row query
+                if (!empty($row['nis']) && isset($existingNis[$row['nis']])) {
+                    $rowErrors[] = "NIS '{$row['nis']}' sudah terdaftar";
+                }
+
+                // Duplicate NISN — uses preloaded set, no per-row query
+                if (!empty($row['nisn']) && isset($existingNisn[$row['nisn']])) {
+                    $rowErrors[] = "NISN '{$row['nisn']}' sudah terdaftar";
+                }
+
+                // If any errors, skip this row
+                if ($rowErrors) {
+                    $errors[] = "Baris {$lineNo} ({$row['name']}): " . implode('; ', $rowErrors) . ' — dilewati.';
                     $skipped++;
                     continue;
                 }
 
-                if (Student::where('nis', $row['nis'])->exists()) {
-                    $errors[] = "Baris " . ($offset + 2) . ": NIS {$row['nis']} sudah ada — dilewati.";
-                    $skipped++;
-                    continue;
-                }
+                // ── 6. Insert ─────────────────────────────────────────────────
+                DB::transaction(function () use ($row, $kelasId) {
+                    $student = Student::create([
+                        'nis'          => $row['nis'],
+                        'nisn'         => $row['nisn'] ?? null,
+                        'name'         => $row['name'],
+                        'gender'       => in_array(strtoupper($row['gender'] ?? ''), ['L', 'P'])
+                                            ? strtoupper($row['gender']) : null,
+                        'kelas_id'     => $kelasId,
+                        'birth_place'  => $row['birth_place'] ?? null,
+                        'birth_date'   => !empty($row['birth_date']) ? $row['birth_date'] : null,
+                        'address'      => $row['address'] ?? null,
+                        'agama'        => $row['agama'] ?? null,
+                        'tahun_masuk'  => $row['tahun_masuk'] ?? null,
+                        'parent_phone' => $row['parent_phone'] ?? null,
+                        'status'       => 'active',
+                        'status_changed_at' => now(),
+                        'status_changed_by' => Auth::id(),
+                    ]);
 
-                $student = Student::create([
-                    'nis'          => $row['nis'],
-                    'nisn'         => $row['nisn'] ?? null,
-                    'name'         => $row['name'],
-                    'gender'       => in_array(strtoupper($row['gender'] ?? ''), ['L', 'P']) ? strtoupper($row['gender']) : null,
-                    'class_name'   => $row['class_name'],
-                    'birth_place'  => $row['birth_place'] ?? null,
-                    'birth_date'   => !empty($row['birth_date']) ? $row['birth_date'] : null,
-                    'address'      => $row['address'] ?? null,
-                    'agama'        => $row['agama'] ?? null,
-                    'tahun_masuk'  => $row['tahun_masuk'] ?? null,
-                    'parent_phone' => $row['parent_phone'] ?? null,
-                    'status'       => 'active',
-                ]);
-
-                StudentStatusLog::create([
-                    'student_id'  => $student->id,
-                    'status_lama' => null,
-                    'status_baru' => 'active',
-                    'catatan'     => 'Import CSV',
-                    'diubah_oleh' => Auth::id(),
-                ]);
+                    StudentStatusLog::create([
+                        'student_id'  => $student->id,
+                        'status_lama' => null,
+                        'status_baru' => 'active',
+                        'catatan'     => 'Import CSV',
+                        'diubah_oleh' => Auth::id(),
+                    ]);
+                });
 
                 $inserted++;
             }
@@ -338,8 +465,9 @@ class StudentController extends Controller
             'Content-Disposition' => 'attachment; filename="template-import-siswa.csv"',
         ];
 
-        $columns = ['nis', 'nisn', 'name', 'gender', 'class_name', 'birth_place', 'birth_date', 'address', 'agama', 'tahun_masuk', 'parent_phone'];
-        $example = ['2024001', '1234567890', 'Ahmad Siswa', 'L', 'X IPA 1', 'Jakarta', '2008-05-10', 'Jl. Merdeka No. 1', 'Islam', '2024', '08123456789'];
+        // Column renamed: class_name → nama_kelas (must match master kelas)
+        $columns = ['nis', 'nisn', 'name', 'gender', 'nama_kelas', 'birth_place', 'birth_date', 'address', 'agama', 'tahun_masuk', 'parent_phone'];
+        $example = ['2024001', '1234567890', 'Ahmad Siswa', 'L', 'X - Umum', 'Jakarta', '2008-05-10', 'Jl. Merdeka No. 1', 'Islam', '2024', '08123456789'];
 
         $callback = function () use ($columns, $example) {
             $file = fopen('php://output', 'w');

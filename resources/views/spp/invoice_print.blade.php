@@ -57,7 +57,7 @@
                 <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Ditagihkan Kepada:</p>
                 <h3 class="text-xl font-bold text-gray-800">{{ $bill->student->name }}</h3>
                 <p class="text-gray-600">NIS: <span class="font-mono font-bold">{{ $bill->student->nis }}</span></p>
-                <p class="text-gray-600">Kelas: {{ $bill->student->class_name }}</p>
+                <p class="text-gray-600">Kelas: {{ optional($bill->student->kelas)->nama_kelas ?? '-' }}</p>
             </div>
             <div class="text-right">
                 <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Tanggal Bayar:</p>

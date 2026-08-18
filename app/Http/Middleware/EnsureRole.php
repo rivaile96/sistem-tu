@@ -17,7 +17,7 @@ use Symfony\Component\HttpFoundation\Response;
  * Returns HTTP 403 for authenticated users who lack the required role.
  * Unauthenticated users are handled upstream by the 'auth' middleware.
  *
- * Role enum (users.role): admin | tu | kepala_sekolah
+ * Role enum (users.role): admin | tu | staf | kepala_sekolah
  */
 class EnsureRole
 {

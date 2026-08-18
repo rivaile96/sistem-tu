@@ -36,6 +36,12 @@ class ParentApiController extends Controller
             return response()->json(['message' => 'NIS atau No HP salah!'], 401);
         }
 
+        // Phase 8.6 — Security: only active students can use the parent portal.
+        // calon_siswa, keluar, graduated, alumni must not receive API tokens.
+        if ($student->status !== 'active') {
+            return response()->json(['message' => 'Akun siswa belum aktif atau sudah tidak terdaftar.'], 403);
+        }
+
         $token = $student->createToken('ParentApp')->plainTextToken;
 
         return response()->json([
@@ -45,7 +51,12 @@ class ParentApiController extends Controller
                 'id'         => $student->id,
                 'name'       => $student->name,
                 'nis'        => $student->nis,
-                'class_name' => $student->class_name,
+                // kelas via relation (canonical since Phase 9.3)
+                'class_name' => optional($student->kelas)->nama_kelas ?? '-',
+                'kelas'      => $student->kelas_id ? [
+                    'id'         => $student->kelas_id,
+                    'nama_kelas' => optional($student->kelas)->nama_kelas ?? '-',
+                ] : null,
             ],
         ]);
     }
@@ -63,12 +74,16 @@ class ParentApiController extends Controller
             ->orderBy('id', 'desc')
             ->get()
             ->map(fn ($bill) => [
-                'type'   => 'SPP',
-                'id'     => $bill->id,
-                'title'  => $bill->name,
-                'desc'   => 'Wajib Bulan Ini',
-                'amount' => $bill->amount,
-                'date'   => $bill->created_at->format('d M Y'),
+                'type'            => 'SPP',
+                'id'              => $bill->id,
+                'title'           => $bill->name,
+                'desc'            => 'Wajib Bulan Ini',
+                'amount'          => $bill->amount,
+                'original_amount' => $bill->original_amount ?? $bill->amount,
+                'discount_amount' => $bill->discount_amount ?? 0,
+                'status'          => $bill->status,
+                'paid_at'         => $bill->paid_at?->toIso8601String(),
+                'date'            => $bill->created_at->format('d M Y'),
             ]);
 
         $otherBills = StudentBill::where('student_id', $student->id)
@@ -77,12 +92,16 @@ class ParentApiController extends Controller
             ->orderBy('id', 'desc')
             ->get()
             ->map(fn ($bill) => [
-                'type'   => 'BILL',
-                'id'     => $bill->id,
-                'title'  => $bill->name,
-                'desc'   => 'Tagihan Sekolah',
-                'amount' => $bill->amount,
-                'date'   => $bill->created_at->format('d M Y'),
+                'type'            => 'BILL',
+                'id'              => $bill->id,
+                'title'           => $bill->name,
+                'desc'            => 'Tagihan Sekolah',
+                'amount'          => $bill->amount,
+                'original_amount' => $bill->original_amount ?? $bill->amount,
+                'discount_amount' => $bill->discount_amount ?? 0,
+                'status'          => $bill->status,
+                'paid_at'         => $bill->paid_at?->toIso8601String(),
+                'date'            => $bill->created_at->format('d M Y'),
             ]);
 
         $canteenDebts = PosOrder::where('student_id', $student->id)
@@ -105,9 +124,21 @@ class ParentApiController extends Controller
         $grandTotal = $allBills->sum('amount');
 
         return response()->json([
+            // v1 contract — backward-compat fields preserved
             'student_name' => $student->name,
             'nis'          => $student->nis,
-            'class_name'   => $student->class_name,
+            'class_name'   => optional($student->kelas)->nama_kelas ?? '-', // compat field
+            // v1 enriched student object
+            'student'      => [
+                'id'     => $student->id,
+                'nis'    => $student->nis,
+                'name'   => $student->name,
+                'status' => $student->status,
+                'kelas'  => $student->kelas_id ? [
+                    'id'         => $student->kelas_id,
+                    'nama_kelas' => optional($student->kelas)->nama_kelas ?? '-',
+                ] : null,
+            ],
             'summary'      => [
                 'total_tagihan' => $grandTotal,
                 'count'         => $allBills->count(),

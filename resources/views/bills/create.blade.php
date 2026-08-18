@@ -70,17 +70,17 @@
                             <select name="student_id" class="w-full rounded-lg border-gray-300 focus:ring-[#0284c7] focus:border-[#0284c7] shadow-sm">
                                 <option value="">-- Cari Nama Siswa --</option>
                                 @foreach($students as $student)
-                                    <option value="{{ $student->id }}">{{ $student->name }} - {{ $student->class_name }}</option>
+                                    <option value="{{ $student->id }}">{{ $student->name }} - {{ optional($student->kelas)->nama_kelas ?? '-' }}</option>
                                 @endforeach
                             </select>
                         </div>
 
                         <div id="input-class" class="w-full hidden">
                             <label class="block text-xs font-bold text-gray-500 uppercase mb-2">Pilih Kelas</label>
-                            <select name="class_name" class="w-full rounded-lg border-gray-300 focus:ring-[#0284c7] focus:border-[#0284c7] shadow-sm">
+                            <select name="kelas_id" class="w-full rounded-lg border-gray-300 focus:ring-[#0284c7] focus:border-[#0284c7] shadow-sm">
                                 <option value="">-- Pilih Kelas --</option>
-                                @foreach($classes as $cls)
-                                    <option value="{{ $cls }}">{{ $cls }}</option>
+                                @foreach($kelasList as $kelas)
+                                    <option value="{{ $kelas->id }}">{{ $kelas->nama_kelas }}</option>
                                 @endforeach
                             </select>
                         </div>

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use App\Models\Kelas;
 use App\Models\Setting;
 use App\Models\Student;
 use Illuminate\Support\Facades\DB;
@@ -54,8 +55,10 @@ class IntegrationController extends Controller
             }
 
             // C. Looping & Update Data Lokal TU
-            $countNew = 0;
-            $countUpdated = 0;
+            $countNew        = 0;
+            $countUpdated    = 0;
+            $countUnresolved = 0;
+            $unresolvedClasses = [];
 
             foreach ($remoteStudents as $remote) {
                 // LOGIC MAPPING DATA (PPDB -> TU)
@@ -67,23 +70,37 @@ class IntegrationController extends Controller
                 // 2. Tentukan No HP Ortu (Prioritas: Ayah -> Ibu -> Wali -> Siswa)
                 $phoneFix = $remote->no_hp_ayah ?? $remote->no_hp_ibu ?? $remote->no_hp_wali ?? $remote->no_hp_siswa;
 
-                // 3. Tentukan Kelas (Misal: "X - RPL")
-                // Karena di PPDB cuma ada jurusan, kita default-kan depannya 'X' (Kelas 10)
-                $jurusan = $remote->jurusan_pilihan ?? 'Umum';
-                $kelasFix = "X - " . $jurusan;
+                // 3. Phase 9.1: Resolve kelas_id by matching against master kelas.
+                // Never write arbitrary class_name from external input.
+                // If no matching kelas found → keep kelas_id=NULL, status=calon_siswa,
+                // and record the unresolved class string in the sync result.
+                $jurusan  = $remote->jurusan_pilihan ?? 'Umum';
+                $kelasFix = 'X - ' . $jurusan;
+
+                $kelas   = Kelas::where('nama_kelas', $kelasFix)->first();
+                $kelasId = $kelas?->id;
+
+                $payload = [
+                    'name'         => $remote->nama_lengkap,
+                    'parent_phone' => $phoneFix,
+                ];
+
+                if ($kelasId) {
+                    // Resolved — set kelas_id from master
+                    $payload['kelas_id'] = $kelasId;
+                    $payload['status']   = 'active';
+                } else {
+                    // Unresolved — do NOT write arbitrary class_name
+                    // Student stays / becomes calon_siswa until manually assigned
+                    $payload['status']    = 'calon_siswa';
+                    $countUnresolved++;
+                    $unresolvedClasses[$kelasFix] = ($unresolvedClasses[$kelasFix] ?? 0) + 1;
+                }
 
                 // Eksekusi Simpan ke Database Lokal
                 $local = Student::updateOrCreate(
-                    ['nis' => $nisFix], // Kunci pencarian (biar gak duplikat)
-                    [
-                        'name' => $remote->nama_lengkap,
-                        'class_name' => $kelasFix, 
-                        'parent_phone' => $phoneFix,
-                        // Kita anggap semua data dari PPDB statusnya 'active'
-                        'status' => 'active', 
-                        // Jika ada kolom nfc_uid di PPDB bisa ditarik juga, kalau gak ada biarin null
-                        // 'nfc_uid' => $remote->nfc_uid ?? null 
-                    ]
+                    ['nis' => $nisFix],
+                    $payload
                 );
 
                 if ($local->wasRecentlyCreated) {
@@ -93,7 +110,14 @@ class IntegrationController extends Controller
                 }
             }
 
-            return back()->with('success', "Sukses Integrasi! Ditarik: {$remoteStudents->count()}. Siswa Baru: {$countNew}, Update Data: {$countUpdated}");
+            $msg = "Sukses Integrasi! Ditarik: {$remoteStudents->count()}. Baru: {$countNew}, Update: {$countUpdated}";
+            if ($countUnresolved > 0) {
+                $unresolved = collect($unresolvedClasses)
+                    ->map(fn ($cnt, $kls) => "{$kls} ({$cnt}x)")
+                    ->join(', ');
+                $msg .= ". Kelas tidak ditemukan (jadi calon_siswa): {$unresolved}";
+            }
+            return back()->with('success', $msg);
 
         } catch (\Exception $e) {
             return back()->with('error', 'Gagal Sync: ' . $e->getMessage());

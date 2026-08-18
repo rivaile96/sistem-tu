@@ -31,7 +31,7 @@
                 <div>
                     <p class="text-white font-bold text-base leading-tight">{{ $student->name }}</p>
                     <p class="text-sky-200 text-xs mt-0.5">NIS: {{ $student->nis }}</p>
-                    <p class="text-sky-300 text-xs">{{ $student->class_name ?? $schoolName }}</p>
+                    <p class="text-sky-300 text-xs">{{ optional($student->kelas)->nama_kelas ?? $schoolName }}</p>
                 </div>
             </div>
             <form method="POST" action="{{ route('siswa.logout') }}">
@@ -176,6 +176,9 @@
                             </div>
                             {{-- Right: amount + badge --}}
                             <div class="text-right shrink-0">
+                                @if($bill->original_amount && $bill->original_amount != $bill->amount)
+                                    <p class="text-xs text-gray-400 line-through">Rp {{ number_format($bill->original_amount, 0, ',', '.') }}</p>
+                                @endif
                                 <p class="font-bold text-gray-900 text-sm">Rp {{ number_format($bill->amount, 0, ',', '.') }}</p>
                                 <span class="inline-block mt-1 bg-red-100 text-red-600 text-xs px-2 py-0.5 rounded-full font-semibold">
                                     {{ $bill->status === 'PARTIAL' ? 'Sebagian' : 'Belum Bayar' }}

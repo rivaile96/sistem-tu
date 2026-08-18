@@ -73,7 +73,7 @@ class PPDBController extends Controller
                 'student_id'  => $siswa->id,
                 'status_lama' => null,
                 'status_baru' => 'calon_siswa',
-                'catatan'     => 'Pendaftaran PPDB baru' . ($validated['catatan'] ? ': ' . $validated['catatan'] : ''),
+                'catatan'     => 'Pendaftaran Registrasi Siswa Baru' . (!empty($validated['catatan']) ? ': ' . $validated['catatan'] : ''),
                 'diubah_oleh' => Auth::id(),
             ]);
         });
@@ -91,9 +91,11 @@ class PPDBController extends Controller
 
     public function show(int $id)
     {
-        $siswa = Student::with('statusLogs.statusChangedBy')->findOrFail($id);
+        $siswa = Student::with('statusLogs.diubahOleh')->findOrFail($id);
 
-        if ($siswa->status !== 'calon_siswa') {
+        // Allow post-activation view for bundle prompt (session show_bundle_prompt).
+        // Only redirect away if NOT coming from activation flow.
+        if ($siswa->status !== 'calon_siswa' && !session('show_bundle_prompt')) {
             return redirect()->route('students.show', $id)
                 ->with('info', 'Siswa ini sudah diproses dan tidak lagi berstatus Calon Siswa.');
         }
@@ -151,33 +153,59 @@ class PPDBController extends Controller
             ->with('success', 'Data calon siswa berhasil diperbarui.');
     }
 
+    /**
+     * Aktivasi Siswa (individual).
+     * Replaces the old "seleksi" concept — no selection/rejection workflow.
+     * aksi=terima  → active (requires NIS + kelas_id)
+     * aksi=tolak   → keluar (no kelas required)
+     *
+     * Route kept as ppdb.seleksi for backward-compat with existing views.
+     * UI label is now "Aktivasi Siswa".
+     */
     public function seleksi(Request $request, int $id)
     {
         $siswa = Student::findOrFail($id);
 
         $validated = $request->validate([
-            'aksi'      => 'required|in:terima,tolak',
-            'kelas_id'  => 'required_if:aksi,terima|nullable|exists:kelas,id',
-            'nis'       => 'nullable|string|max:20|unique:students,nis,' . $id,
-            'catatan'   => 'nullable|string|max:500',
+            'aksi'     => 'required|in:terima,tolak',
+            'kelas_id' => [
+                'required_if:aksi,terima',
+                'nullable',
+                function ($attribute, $value, $fail) {
+                    if ($value && !Kelas::where('id', $value)->where('is_aktif', true)->exists()) {
+                        $fail('Kelas tidak valid atau tidak aktif.');
+                    }
+                },
+            ],
+            'nis'      => 'required_if:aksi,terima|nullable|string|max:20|unique:students,nis,' . $id,
+            'catatan'  => 'nullable|string|max:500',
         ]);
 
         $aksi = $validated['aksi'];
+
+        // 5.3 — Active status hardening: NIS + kelas_id are mandatory
+        if ($aksi === 'terima') {
+            if (empty($validated['kelas_id'])) {
+                return back()->withErrors(['kelas_id' => 'Kelas wajib dipilih untuk mengaktifkan siswa.'])->withInput();
+            }
+            if (empty($validated['nis'])) {
+                return back()->withErrors(['nis' => 'NIS wajib diisi untuk mengaktifkan siswa.'])->withInput();
+            }
+        }
 
         DB::transaction(function () use ($siswa, $validated, $aksi) {
             $statusLama = $siswa->status;
 
             if ($aksi === 'terima') {
-                $kelas = Kelas::find($validated['kelas_id']);
+                $kelas = Kelas::findOrFail($validated['kelas_id']);
                 $siswa->update([
                     'status'            => 'active',
-                    'kelas_id'          => $validated['kelas_id'],
-                    'class_name'        => $kelas?->nama_kelas,
-                    'nis'               => $validated['nis'] ?? $siswa->nis,
+                    'kelas_id'          => $kelas->id,
+                    'nis'               => $validated['nis'],
                     'status_changed_at' => now(),
                     'status_changed_by' => Auth::id(),
                 ]);
-                $catatanLog = 'Diterima via PPDB' . ($kelas ? ', ditempatkan di ' . $kelas->nama_kelas : '');
+                $catatanLog = 'Aktivasi siswa via Registrasi Siswa Baru, ditempatkan di ' . $kelas->nama_kelas;
                 if (!empty($validated['catatan'])) $catatanLog .= '. ' . $validated['catatan'];
             } else {
                 $siswa->update([
@@ -185,7 +213,7 @@ class PPDBController extends Controller
                     'status_changed_at' => now(),
                     'status_changed_by' => Auth::id(),
                 ]);
-                $catatanLog = 'Ditolak via PPDB';
+                $catatanLog = 'Siswa tidak dilanjutkan (keluar) via Registrasi Siswa Baru';
                 if (!empty($validated['catatan'])) $catatanLog .= ': ' . $validated['catatan'];
             }
 
@@ -198,11 +226,17 @@ class PPDBController extends Controller
             ]);
         });
 
-        $pesan = $aksi === 'terima'
-            ? "{$siswa->name} berhasil diterima dan dijadikan siswa aktif."
-            : "{$siswa->name} ditolak dari proses PPDB.";
+        if ($aksi === 'terima') {
+            // After activation: redirect to students.show with bundle prompt.
+            // ppdb.show redirects away for non-calon unless show_bundle_prompt is set,
+            // so we go directly to the canonical student detail page which has the bundle prompt.
+            return redirect()->route('students.show', $siswa->id)
+                ->with('success', "{$siswa->name} berhasil diaktifkan sebagai siswa.")
+                ->with('show_bundle_prompt', true);
+        }
 
-        return redirect()->route('ppdb.index')->with('success', $pesan);
+        return redirect()->route('ppdb.index')
+            ->with('success', "{$siswa->name} tidak dilanjutkan dan ditandai keluar.");
     }
 
     public function konversiIndex()
@@ -216,59 +250,115 @@ class PPDBController extends Controller
 
     public function konversiEksekusi(Request $request)
     {
-        $validated = $request->validate([
-            'siswa_ids'          => 'required|array|min:1',
-            'siswa_ids.*'        => 'exists:students,id',
-            'kelas_id_default'   => 'nullable|exists:kelas,id',
-            'kelas_per_siswa'    => 'nullable|array',
-            'kelas_per_siswa.*'  => 'nullable|exists:kelas,id',
+        $request->validate([
+            'siswa_ids'         => 'required|array|min:1',
+            'siswa_ids.*'       => 'exists:students,id',
+            'kelas_id_default'  => 'nullable|exists:kelas,id',
+            'kelas_per_siswa'   => 'nullable|array',
+            'kelas_per_siswa.*' => 'nullable|exists:kelas,id',
+            'nis_per_siswa'     => 'nullable|array',
+            'nis_per_siswa.*'   => 'nullable|string|max:20',
         ]);
 
-        $userId   = Auth::id();
-        $diproses = 0;
+        $siswaIds       = $request->input('siswa_ids', []);
+        $kelasDefault   = $request->input('kelas_id_default');
+        $kelasPerSiswa  = $request->input('kelas_per_siswa', []);
+        $nisPerSiswa    = $request->input('nis_per_siswa', []);
+        $userId         = Auth::id();
+
+        // Pre-load existing NIS to detect duplicates without per-row queries
+        $existingNis = Student::withTrashed()->whereNotNull('nis')->pluck('nis', 'nis')->toArray();
+
+        $berhasil = [];
         $gagal    = [];
 
-        DB::transaction(function () use ($validated, $userId, &$diproses, &$gagal) {
-            foreach ($validated['siswa_ids'] as $siswaId) {
-                $siswa = Student::find($siswaId);
-                if (!$siswa || $siswa->status !== 'calon_siswa') {
-                    $gagal[] = $siswaId;
+        foreach ($siswaIds as $siswaId) {
+            $siswa = Student::find($siswaId);
+
+            // ── Per-siswa validation ──────────────────────────────────────────
+            if (!$siswa) {
+                $gagal[] = ['id' => $siswaId, 'nama' => 'Unknown', 'alasan' => 'Data tidak ditemukan'];
+                continue;
+            }
+            if ($siswa->status !== 'calon_siswa') {
+                $gagal[] = ['id' => $siswaId, 'nama' => $siswa->name, 'alasan' => 'Status bukan calon siswa'];
+                continue;
+            }
+
+            $nis     = trim($nisPerSiswa[$siswaId] ?? '');
+            $kelasId = $kelasPerSiswa[$siswaId] ?? $kelasDefault ?? null;
+
+            if (empty($nis)) {
+                $gagal[] = ['id' => $siswaId, 'nama' => $siswa->name, 'alasan' => 'NIS kosong'];
+                continue;
+            }
+            // Check duplicate NIS (exclude self)
+            if (isset($existingNis[$nis]) ) {
+                // The NIS might belong to this same student (re-submission) — skip that case
+                $owner = Student::withTrashed()->where('nis', $nis)->first();
+                if (!$owner || $owner->id !== $siswa->id) {
+                    $gagal[] = ['id' => $siswaId, 'nama' => $siswa->name, 'alasan' => "NIS '{$nis}' sudah dipakai"];
                     continue;
                 }
-
-                $kelasId = $validated['kelas_per_siswa'][$siswaId]
-                    ?? $validated['kelas_id_default']
-                    ?? null;
-
-                $kelas      = $kelasId ? Kelas::find($kelasId) : null;
-                $statusLama = $siswa->status;
-
-                $siswa->update([
-                    'status'            => 'active',
-                    'kelas_id'          => $kelas?->id,
-                    'class_name'        => $kelas?->nama_kelas,
-                    'status_changed_at' => now(),
-                    'status_changed_by' => $userId,
-                ]);
-
-                StudentStatusLog::create([
-                    'student_id'  => $siswa->id,
-                    'status_lama' => $statusLama,
-                    'status_baru' => 'active',
-                    'catatan'     => 'Konversi massal PPDB' . ($kelas ? ', ditempatkan di ' . $kelas->nama_kelas : ''),
-                    'diubah_oleh' => $userId,
-                ]);
-
-                $diproses++;
             }
-        });
+            if (!$kelasId) {
+                $gagal[] = ['id' => $siswaId, 'nama' => $siswa->name, 'alasan' => 'Kelas tidak dipilih'];
+                continue;
+            }
 
-        $pesan = "{$diproses} calon siswa berhasil dikonversi menjadi siswa aktif.";
-        if (count($gagal) > 0) {
-            $pesan .= ' ' . count($gagal) . ' siswa gagal diproses (mungkin status sudah berubah).';
+            $kelas = Kelas::where('id', $kelasId)->where('is_aktif', true)->first();
+            if (!$kelas) {
+                $gagal[] = ['id' => $siswaId, 'nama' => $siswa->name, 'alasan' => 'Kelas tidak valid atau tidak aktif'];
+                continue;
+            }
+
+            // ── Atomic per-siswa transaction ─────────────────────────────────
+            // Each student is independent — one failure does not roll back others.
+            try {
+                DB::transaction(function () use ($siswa, $kelas, $nis, $userId) {
+                    $statusLama = $siswa->status;
+                    $siswa->update([
+                        'status'            => 'active',
+                        'nis'               => $nis,
+                        'kelas_id'          => $kelas->id,
+                        'status_changed_at' => now(),
+                        'status_changed_by' => $userId,
+                    ]);
+                    StudentStatusLog::create([
+                        'student_id'  => $siswa->id,
+                        'status_lama' => $statusLama,
+                        'status_baru' => 'active',
+                        'catatan'     => 'Aktivasi massal Registrasi Siswa Baru, ditempatkan di ' . $kelas->nama_kelas,
+                        'diubah_oleh' => $userId,
+                    ]);
+                });
+
+                // Mark NIS as used so next iterations in this batch detect it as duplicate
+                $existingNis[$nis] = $nis;
+                $berhasil[] = $siswa->name;
+
+            } catch (\Throwable $e) {
+                $gagal[] = ['id' => $siswaId, 'nama' => $siswa->name, 'alasan' => 'Gagal disimpan: ' . $e->getMessage()];
+            }
         }
 
-        return redirect()->route('ppdb.index')->with('success', $pesan);
+        // ── Build summary message ─────────────────────────────────────────────
+        $jumlahBerhasil = count($berhasil);
+        $jumlahGagal    = count($gagal);
+
+        $pesan = "Aktivasi selesai: {$jumlahBerhasil} siswa berhasil diaktifkan.";
+        if ($jumlahGagal > 0) {
+            $pesan .= " {$jumlahGagal} siswa gagal.";
+        }
+
+        $rincianGagal = array_map(
+            fn($g) => "{$g['nama']}: {$g['alasan']}",
+            $gagal
+        );
+
+        return redirect()->route('ppdb.index')
+            ->with('success', $pesan)
+            ->with('aktivasi_gagal', $rincianGagal);
     }
 
     public function destroy(int $id)

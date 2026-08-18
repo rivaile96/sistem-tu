@@ -181,8 +181,11 @@
                                 </tr>
                                 <tr class="hover:bg-blue-50/50 transition-colors">
                                     <td class="px-4 py-3 text-gray-500 font-mono text-xs">5</td>
-                                    <td class="px-4 py-3"><span class="font-mono bg-gray-100 text-[#0284c7] px-2 py-0.5 rounded text-xs font-bold">class_name</span></td>
-                                    <td class="px-4 py-3 text-gray-600">Nama kelas, contoh: <span class="font-mono">X IPA 1</span></td>
+                                    <td class="px-4 py-3"><span class="font-mono bg-gray-100 text-[#0284c7] px-2 py-0.5 rounded text-xs font-bold">nama_kelas</span></td>
+                                    <td class="px-4 py-3 text-gray-600">
+                                        Nama kelas, contoh: <span class="font-mono">X IPA 1</span>.<br>
+                                        <span class="text-amber-600 text-xs font-medium">⚠ Harus sama persis dengan nama di Master Kelas (tidak case-sensitive).</span>
+                                    </td>
                                     <td class="px-4 py-3 text-center"><span class="inline-block w-5 h-5 bg-red-100 text-red-600 rounded-full text-xs font-bold leading-5">✓</span></td>
                                 </tr>
                                 <tr class="hover:bg-blue-50/50 transition-colors">

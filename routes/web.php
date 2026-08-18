@@ -14,7 +14,7 @@ use App\Http\Controllers\PosBundleController;      // Master Paket Bundling
 use App\Http\Controllers\PosTransactionController; // Kasir
 use App\Http\Controllers\PosReportController;      // Laporan POS
 use App\Http\Controllers\IntegrationController;    // Integrasi PPDB
-use App\Http\Controllers\SppController;            // (Legacy) SPP Lama
+// SppController removed in Phase 6B-4 — spp_bills table dropped
 use App\Http\Controllers\SchoolSettingController;  // Pengaturan Sekolah
 use App\Http\Controllers\NaikKelasController;       // Naik Kelas Massal
 use App\Http\Controllers\RombelController;           // Rombel & Tahun Ajaran
@@ -79,15 +79,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
     // 2. MANAJEMEN SISWA
-    // Read: all staff. Write/delete: admin + tu only.
+    // Read: all staff + kepala_sekolah. Write: admin,tu,staf. Delete: admin,tu only.
     Route::prefix('students')->name('students.')->group(function () {
         Route::get('/', [StudentController::class, 'index'])->name('index');
-        Route::get('/{id}', [StudentController::class, 'show'])->name('show');
-        Route::get('/{id}/finance', [StudentController::class, 'show'])->name('finance'); // backward compat
-        Route::get('/{id}/status', [StudentController::class, 'formUbahStatus'])->name('ubah-status');
 
-        // Write operations — admin + tu only
-        Route::middleware('role:admin,tu')->group(function () {
+        // Static routes MUST come before /{id} wildcard to avoid shadowing
+        // Write operations — admin, tu, staf
+        Route::middleware('role:admin,tu,staf')->group(function () {
             Route::get('/create', [StudentController::class, 'create'])->name('create');
             Route::post('/', [StudentController::class, 'store'])->name('store');
             Route::get('/import', [StudentController::class, 'importForm'])->name('import');
@@ -95,9 +93,18 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Route::get('/template', [StudentController::class, 'downloadTemplate'])->name('template');
             Route::get('/{id}/edit', [StudentController::class, 'edit'])->name('edit');
             Route::put('/{id}', [StudentController::class, 'update'])->name('update');
-            Route::delete('/{id}', [StudentController::class, 'destroy'])->name('destroy');
             Route::post('/{id}/status', [StudentController::class, 'ubahStatus'])->name('ubah-status.process');
         });
+
+        // Delete — admin, tu only (staf cannot delete students)
+        Route::middleware('role:admin,tu')->group(function () {
+            Route::delete('/{id}', [StudentController::class, 'destroy'])->name('destroy');
+        });
+
+        // Wildcard routes last — after all static routes
+        Route::get('/{id}', [StudentController::class, 'show'])->name('show');
+        Route::get('/{id}/finance', [StudentController::class, 'show'])->name('finance');
+        Route::get('/{id}/status', [StudentController::class, 'formUbahStatus'])->name('ubah-status');
     });
 
     // NAIK KELAS MASSAL — admin + tu only
@@ -130,42 +137,50 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::delete('rombel/{rombel}/remove-siswa/{student}', [RombelController::class, 'removeSiswa'])->name('rombel.remove-siswa');
     });
 
-    // 3. BILLING / TAGIHAN (SYSTEM BARU)
-    // Read/print/export: all staff.
-    // Create/pay/delete: admin + tu only.
+    // 3. BILLING / TAGIHAN
+    // Read/print/export: admin,tu,staf,kepala_sekolah.
+    // Create/pay/delete: admin,tu only.
     Route::controller(BillController::class)->prefix('bills')->name('bills.')->group(function () {
-        // All authenticated staff
-        Route::get('/', 'index')->name('index');
-        Route::get('/export', 'export')->name('export');
-        Route::get('/{id}/print', 'print')->name('print');
+        // Monitoring — all authenticated staff including kepala_sekolah
+        Route::middleware('role:admin,tu,staf,kepala_sekolah')->group(function () {
+            Route::get('/', 'index')->name('index');
+            Route::get('/export', 'export')->name('export');
+            Route::get('/{id}/print', 'print')->name('print');
+        });
 
-        // admin + tu only — payment confirmation and bill write operations
+        // Write operations — admin,tu only
         Route::middleware('role:admin,tu')->group(function () {
             Route::get('/create', 'create')->name('create');
             Route::post('/', 'store')->name('store');
-            Route::post('/{id}/pay', 'pay')->name('pay');       // Phase 3.2: role-gated
-            Route::delete('/{id}', 'destroy')->name('destroy'); // Phase 3.2: role-gated
+            Route::post('/{id}/pay', 'pay')->name('pay');
+            Route::delete('/{id}', 'destroy')->name('destroy');
         });
     });
 
-    // 4. POS (KANTIN & KOPERASI) — admin + tu only
-    // kepala_sekolah reads reports via the dashboard; POS operations are TU/admin.
-    Route::prefix('pos')->name('pos.')->middleware('role:admin,tu')->group(function () {
-        // A. Master Barang
-        Route::resource('items', PosItemController::class);
+    // 4. POS (KANTIN & KOPERASI)
+    // Transaksi kasir: admin,tu,staf. Master data & bundling: admin,tu. History/laporan: admin,tu,kepala_sekolah.
+    Route::prefix('pos')->name('pos.')->group(function () {
+        // A. Master Barang — admin,tu only
+        Route::middleware('role:admin,tu')->group(function () {
+            Route::resource('items', PosItemController::class);
+        });
 
-        // B. Master Paket / Bundling
-        Route::resource('bundles', PosBundleController::class);
+        // B. Master Paket / Bundling — admin,tu only
+        Route::middleware('role:admin,tu')->group(function () {
+            Route::resource('bundles', PosBundleController::class);
+            Route::get('bundles/{bundle}/generate-bills', [PosBundleController::class, 'generateBillsForm'])->name('bundles.generateBillsForm');
+            Route::post('bundles/{bundle}/generate-bills', [PosBundleController::class, 'generateBills'])->name('bundles.generateBills');
+        });
 
-        // C. Kasir / Transaksi Harian
-        Route::controller(PosTransactionController::class)->group(function() {
+        // C. Kasir / Transaksi — admin,tu,staf
+        Route::middleware('role:admin,tu,staf')->controller(PosTransactionController::class)->group(function () {
             Route::get('/transaction', 'index')->name('transaction');
             Route::post('/transaction', 'store')->name('transaction.store');
             Route::get('/transaction/{id}/print', 'printStruk')->name('transaction.print');
         });
 
-        // D. Laporan & Riwayat
-        Route::controller(PosReportController::class)->prefix('history')->name('history.')->group(function() {
+        // D. Laporan & Riwayat — admin,tu,kepala_sekolah
+        Route::middleware('role:admin,tu,kepala_sekolah')->controller(PosReportController::class)->prefix('history')->name('history.')->group(function () {
             Route::get('/', 'index')->name('index');
             Route::post('/{id}/repay', 'repay')->name('repay');
         });
@@ -185,12 +200,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
     });
 
     // 9. PPDB FLOW
-    // Read: all staff. Write/delete: admin + tu only.
+    // Read: admin,tu,staf,kepala_sekolah. Write/delete: admin,tu only.
     Route::prefix('ppdb')->name('ppdb.')->group(function () {
-        Route::get('/', [PPDBController::class, 'index'])->name('index');
-        Route::get('/{id}', [PPDBController::class, 'show'])->name('show');
+        Route::middleware('role:admin,tu,staf,kepala_sekolah')->group(function () {
+            Route::get('/', [PPDBController::class, 'index'])->name('index');
+            Route::get('/{id}', [PPDBController::class, 'show'])->name('show');
+        });
 
-        // admin + tu only
+        // admin,tu only
         Route::middleware('role:admin,tu')->group(function () {
             Route::get('/daftar', [PPDBController::class, 'create'])->name('create');
             Route::post('/daftar', [PPDBController::class, 'store'])->name('store');
@@ -204,11 +221,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     });
 
     // 7. LEGACY SPP (Sistem Lama - Opsional)
-    Route::prefix('spp')->name('spp.')->group(function () {
-        Route::get('/', [SppController::class, 'index'])->name('index');
-        Route::get('/generate', [SppController::class, 'createGenerate'])->name('create_generate');
-        Route::post('/generate', [SppController::class, 'storeGenerate'])->name('store_generate');
-    });
+    // Phase 6B-4: SPP legacy routes removed.
+    // SppController and spp_bills table have been dropped.
+    // Historical SPP data accessible via /bills?type=SPP
 
     // 8. PROFILE USER
     Route::controller(ProfileController::class)->group(function () {

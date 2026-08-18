@@ -114,7 +114,11 @@
                         @endif
 
                         <div class="flex items-center gap-2">
-                            <button onclick="fetchAndEditBundle({{ $bundle->id }})"
+                                      <a href="{{ route('pos.bundles.generateBillsForm', $bundle->id) }}"
+                                       class="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white py-2 rounded-xl text-xs font-bold transition-colors text-center">
+                                        Generate Tagihan
+                                    </a>
+                                    <button onclick="fetchAndEditBundle({{ $bundle->id }})"
                                     class="flex-1 bg-amber-500 hover:bg-amber-600 text-white py-2 rounded-xl text-xs font-bold transition-colors">
                                 Edit
                             </button>

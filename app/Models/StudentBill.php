@@ -12,9 +12,11 @@ class StudentBill extends Model
     protected $guarded = ['id'];
 
     protected $casts = [
-        'paid_at'  => 'datetime',
-        'due_date' => 'date',
-        'amount'   => 'decimal:2',
+        'paid_at'          => 'datetime',
+        'due_date'         => 'date',
+        'amount'           => 'decimal:2',
+        'original_amount'  => 'decimal:2',
+        'discount_amount'  => 'decimal:2',
     ];
 
     // ── Auditable fields snapshot ─────────────────────────────────────────────

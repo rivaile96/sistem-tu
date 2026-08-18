@@ -10,7 +10,7 @@
                         </svg>
                     </div>
                     <div>
-                        <h1 class="text-3xl font-bold text-gray-900">Konversi Massal PPDB</h1>
+                        <h1 class="text-3xl font-bold text-gray-900">Aktivasi Massal Siswa</h1>
                         @if(isset($tahunAjaranAktif))
                         <p class="text-sm text-gray-500 mt-0.5">Tahun Ajaran: <span class="font-semibold text-gray-700">{{ $tahunAjaranAktif->nama ?? $tahunAjaranAktif }}</span></p>
                         @endif
@@ -21,11 +21,11 @@
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
                     </svg>
-                    <a href="{{ route('ppdb.index') }}" class="hover:text-[#0284c7] transition-colors">PPDB</a>
+                    <a href="{{ route('ppdb.index') }}" class="hover:text-[#0284c7] transition-colors">Registrasi Siswa Baru</a>
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
                     </svg>
-                    <span class="text-gray-700 font-medium">Konversi Massal</span>
+                    <span class="text-gray-700 font-medium">Aktivasi Massal</span>
                 </nav>
             </div>
         </div>
@@ -41,7 +41,7 @@
         </div>
         <div>
             <h3 class="font-bold text-amber-800 mb-1">Tidak ada calon siswa yang perlu diproses</h3>
-            <p class="text-sm text-amber-700">Belum ada calon siswa aktif dalam antrian konversi. Daftarkan calon siswa baru terlebih dahulu.</p>
+            <p class="text-sm text-amber-700">Belum ada calon siswa aktif dalam antrian aktivasi. Daftarkan calon siswa baru terlebih dahulu.</p>
             <a href="{{ route('ppdb.create') }}"
                class="inline-flex items-center gap-2 mt-3 px-4 py-2 bg-amber-600 text-white rounded-xl hover:bg-amber-700 transition-all text-sm font-medium">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -107,6 +107,7 @@
                             </th>
                             <th class="px-6 py-4 text-left">Nama</th>
                             <th class="px-6 py-4 text-left">NISN</th>
+                            <th class="px-6 py-4 text-left min-w-[140px]">NIS <span class="text-red-500">*</span></th>
                             <th class="px-6 py-4 text-center">L/P</th>
                             <th class="px-6 py-4 text-left min-w-[200px]">Kelas</th>
                         </tr>
@@ -128,6 +129,14 @@
                             </td>
                             <td class="px-6 py-4 text-sm text-gray-600 font-mono">
                                 {{ $calon->nisn ?? '—' }}
+                            </td>
+                            <td class="px-6 py-4">
+                                <input type="text"
+                                       name="nis_per_siswa[{{ $calon->id }}]"
+                                       value="{{ old('nis_per_siswa.' . $calon->id) }}"
+                                       placeholder="Masukkan NIS"
+                                       maxlength="20"
+                                       class="w-full border border-gray-200 rounded-xl px-3 py-2 focus:ring-2 focus:ring-[#0284c7]/20 focus:border-[#0284c7] outline-none text-sm font-mono transition-all duration-200">
                             </td>
                             <td class="px-6 py-4 text-center">
                                 <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold
@@ -161,13 +170,13 @@
                 Kembali
             </a>
 
-            <button type="button" id="btnKonversi"
-                    onclick="konfirmasiKonversi()"
+            <button type="button" id="btnAktivasi"
+                    onclick="konfirmasiAktivasi()"
                     class="flex items-center gap-2 bg-[#0284c7] text-white px-5 py-2.5 rounded-xl hover:bg-[#0369a1] transition-all duration-300 font-medium shadow-sm text-sm disabled:opacity-50 disabled:cursor-not-allowed">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                 </svg>
-                Konversi Siswa Terpilih
+                Aktifkan Siswa Terpilih
             </button>
         </div>
     </form>
@@ -201,13 +210,28 @@
         });
     });
 
-    function konfirmasiKonversi() {
+    function konfirmasiAktivasi() {
         const checked = document.querySelectorAll('.siswa-checkbox:checked').length;
         if (checked === 0) {
-            alert('Pilih minimal satu calon siswa untuk dikonversi.');
+            alert('Pilih minimal satu calon siswa untuk diaktifkan.');
             return;
         }
-        if (confirm(`Konversi ${checked} calon siswa menjadi siswa aktif? Tindakan ini tidak dapat dibatalkan.`)) {
+        // Validate NIS filled for all checked rows
+        let missingNis = [];
+        document.querySelectorAll('.siswa-checkbox:checked').forEach(cb => {
+            const siswaId = cb.value;
+            const nisInput = document.querySelector(`input[name="nis_per_siswa[${siswaId}]"]`);
+            if (!nisInput || !nisInput.value.trim()) {
+                const row = document.getElementById('row-' + siswaId);
+                const nama = row ? row.querySelector('span.font-semibold')?.textContent?.trim() : siswaId;
+                missingNis.push(nama);
+            }
+        });
+        if (missingNis.length > 0) {
+            alert('NIS wajib diisi untuk semua siswa yang dipilih.\nBelum diisi:\n' + missingNis.join('\n'));
+            return;
+        }
+        if (confirm(`Aktifkan ${checked} calon siswa menjadi siswa aktif? Tindakan ini tidak dapat dibatalkan.`)) {
             document.getElementById('konversiForm').submit();
         }
     }

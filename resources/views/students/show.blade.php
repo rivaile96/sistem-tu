@@ -14,10 +14,8 @@
                         {{ substr($student->name, 0, 1) }}
                     </div>
                     <h2 class="text-xl font-bold text-gray-800">{{ $student->name }}</h2>
-                    <p class="text-sm text-gray-500 font-mono mb-2">{{ $student->nis }} • {{ $student->class_name }}</p>
-                    <span class="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-bold border border-green-200">
-                        Siswa Aktif
-                    </span>
+                    <p class="text-sm text-gray-500 font-mono mb-2">{{ $student->nis }} • {{ optional($student->kelas)->nama_kelas ?? '-' }}</p>
+                    <span class="px-3 py-1 rounded-full text-xs font-bold border {{ $student->statusBadgeClass }}">{{ $student->status_label }}</span>
 
                     <div class="mt-6 border-t border-gray-100 pt-4 text-left space-y-3 text-sm">
                         <div class="flex justify-between">
@@ -28,6 +26,33 @@
                             <span class="text-gray-500">No. HP Ortu</span>
                             <span class="font-medium">{{ $student->parent_phone ?? '-' }}</span>
                         </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-500">Tempat Lahir</span>
+                            <span class="font-medium">{{ $student->birth_place ?? '-' }}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-500">Tanggal Lahir</span>
+                            <span class="font-medium">
+                                {{ $student->birth_date ? $student->birth_date->format('d/m/Y') : '-' }}
+                            </span>
+                        </div>
+                    </div>
+
+                    {{-- Info password login siswa --}}
+                    @if($student->birth_date)
+                    <div class="mt-4 p-3 bg-blue-50 rounded-xl border border-blue-100 text-left">
+                        <p class="text-xs text-blue-600 font-bold uppercase mb-1">Password Login Siswa</p>
+                        <p class="text-sm font-mono font-bold text-blue-800">{{ $student->birth_date->format('dmy') }}</p>
+                        <p class="text-xs text-blue-500 mt-0.5">Format: ddmmyy (tanggal lahir)</p>
+                    </div>
+                    @endif
+
+                    <div class="mt-4">
+                        <a href="{{ route('students.edit', $student->id) }}"
+                           class="w-full inline-flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                            Edit Data Siswa
+                        </a>
                     </div>
                 </div>
 
@@ -197,11 +222,11 @@
         /**
          * PHASE 1.5 — XSS fix.
          *
-         * Previously: onclick="confirmBillPay('{{ $bill->id }}', '{{ $bill->name }}', ...)"
+         * Previously: onclick="confirmBillPay('{bill.id}', '{bill.name}', ...)"
          * Problem:    Blade values interpolated directly into JS string literals.
          *             A name containing ' or " would break the JS string context.
          *
-         * Now: values live in data-* HTML attributes (Blade {{ }} HTML-escapes them).
+         * Now: values live in data-* HTML attributes (Blade @{{ }} HTML-escapes them).
          *      JS reads them via dataset — the browser decodes HTML entities so the
          *      JS code always receives the original plain-text string as data, never
          *      as executable code.

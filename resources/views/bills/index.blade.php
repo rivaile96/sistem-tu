@@ -150,10 +150,10 @@
                                 <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                                     <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg>
                                 </div>
-                                <select name="class_name" class="w-full pl-10 rounded-xl border-slate-300 text-sm focus:ring-[#0284c7] text-slate-600 bg-white shadow-sm py-3">
+                                <select name="kelas_id" class="w-full pl-10 rounded-xl border-slate-300 text-sm focus:ring-[#0284c7] text-slate-600 bg-white shadow-sm py-3">
                                     <option value="">Semua Kelas</option>
-                                    @foreach($classes as $c)
-                                        <option value="{{ $c }}" {{ request('class_name') == $c ? 'selected' : '' }}>{{ $c }}</option>
+                                    @foreach($kelasList as $kelas)
+                                        <option value="{{ $kelas->id }}" {{ request('kelas_id') == $kelas->id ? 'selected' : '' }}>{{ $kelas->nama_kelas }}</option>
                                     @endforeach
                                 </select>
                             </div>
@@ -238,7 +238,7 @@
                                             <div class="font-bold text-slate-800 text-sm">{{ $bill->student->name }}</div>
                                             <div class="text-xs text-slate-400 mt-0.5 flex items-center gap-1">
                                                 <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg>
-                                                {{ $bill->student->class_name }}
+                                                {{ optional($bill->student->kelas)->nama_kelas ?? '-' }}
                                             </div>
                                         </div>
                                     </div>
@@ -253,6 +253,10 @@
                                 </td>
 
                                 <td class="px-8 py-5 text-right">
+                                    @if($bill->original_amount && $bill->original_amount != $bill->amount)
+                                        <span class="block text-xs text-slate-400 line-through">Rp {{ number_format($bill->original_amount, 0, ',', '.') }}</span>
+                                        <span class="block text-xs text-rose-500">Diskon Rp {{ number_format($bill->discount_amount, 0, ',', '.') }}</span>
+                                    @endif
                                     <span class="font-bold text-lg text-slate-800">Rp {{ number_format($bill->amount, 0, ',', '.') }}</span>
                                 </td>
 

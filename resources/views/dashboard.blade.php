@@ -7,8 +7,8 @@
 
     <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
 
-    <div class="py-8 bg-gray-50/50 min-h-screen">
-        <div class="max-w-full mx-auto px-4 sm:px-6 lg:px-8"></div>
+    <div class="bg-gray-50/50">
+        <div class="max-w-full mx-auto"></div>
             
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                 

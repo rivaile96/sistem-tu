@@ -18,7 +18,13 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('students', function (Blueprint $table) {
-            $table->text('fcm_token')->nullable()->after('status_changed_at');
+            // Phase 8.1: guard ->after() — status_changed_at is added in a later
+            // migration (2026_08_14). On fresh test DBs it may not exist yet.
+            if (Schema::hasColumn('students', 'status_changed_at')) {
+                $table->text('fcm_token')->nullable()->after('status_changed_at');
+            } else {
+                $table->text('fcm_token')->nullable();
+            }
         });
     }
 

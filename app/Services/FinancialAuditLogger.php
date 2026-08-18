@@ -327,6 +327,63 @@ class FinancialAuditLogger
         }
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // G. BILL_CANCELLED
+    // Phase 7.4 — Added for spec compliance.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public static function billCancelled(
+        StudentBill $bill,
+        string $reason = '',
+        string $source = AuditLog::SOURCE_WEB,
+        ?Request $request = null
+    ): void {
+        static::write([
+            'user_id'        => Auth::id() ?: null,
+            'action'         => AuditLog::BILL_CANCELLED,
+            'module'         => 'billing',
+            'auditable_type' => 'StudentBill',
+            'auditable_id'   => $bill->id,
+            'old_values'     => ['status' => $bill->status],
+            'new_values'     => ['status' => 'CANCELLED', 'reason' => $reason],
+            'description'    => "Bill #{$bill->id} dibatalkan" . ($reason ? ": {$reason}" : ''),
+            'ip_address'     => static::ip($request),
+            'source'         => $source,
+        ]);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // H. DISCOUNT_APPLIED
+    // Phase 7.4 — Added for spec compliance.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public static function discountApplied(
+        StudentBill $bill,
+        float $discountAmount,
+        ?string $discountNote = null,
+        string $source = AuditLog::SOURCE_WEB,
+        ?Request $request = null
+    ): void {
+        static::write([
+            'user_id'        => Auth::id() ?: null,
+            'action'         => AuditLog::DISCOUNT_APPLIED,
+            'module'         => 'billing',
+            'auditable_type' => 'StudentBill',
+            'auditable_id'   => $bill->id,
+            'old_values'     => ['amount' => (string) ($bill->original_amount ?? $bill->amount)],
+            'new_values'     => [
+                'amount'          => (string) $bill->amount,
+                'discount_amount' => (string) $discountAmount,
+                'discount_note'   => $discountNote,
+            ],
+            'description'    => "Diskon Rp " . number_format($discountAmount, 0, ',', '.') .
+                                " diterapkan pada bill #{$bill->id}" .
+                                ($discountNote ? " ({$discountNote})" : ''),
+            'ip_address'     => static::ip($request),
+            'source'         => $source,
+        ]);
+    }
+
     /** Write the audit record — never throws. */
     private static function write(array $data): void
     {

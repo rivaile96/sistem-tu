@@ -1,19 +1,22 @@
 <?php
 
-test('registration screen can be rendered', function () {
-    $response = $this->get('/register');
+/**
+ * Phase 9.5 — Replaced Laravel boilerplate RegistrationTest.
+ *
+ * Self-registration via /register is intentionally disabled in this application.
+ * User accounts are created by administrators only.
+ * These tests verify that the registration routes are correctly blocked.
+ */
 
-    $response->assertStatus(200);
+test('registration screen is disabled (returns 404)', function () {
+    $this->get('/register')->assertStatus(404);
 });
 
-test('new users can register', function () {
-    $response = $this->post('/register', [
-        'name' => 'Test User',
-        'email' => 'test@example.com',
-        'password' => 'password',
+test('registration POST is disabled (returns 404)', function () {
+    $this->post('/register', [
+        'name'                  => 'Test User',
+        'email'                 => 'test@example.com',
+        'password'              => 'password',
         'password_confirmation' => 'password',
-    ]);
-
-    $this->assertAuthenticated();
-    $response->assertRedirect(route('dashboard', absolute: false));
+    ])->assertStatus(404);
 });

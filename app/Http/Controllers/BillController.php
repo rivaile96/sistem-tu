@@ -2,12 +2,15 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Kelas;
 use App\Models\Student;
 use App\Models\StudentBill;
 use App\Models\BillItem;
 use App\Models\PosBundle;
 use App\Models\PosItem;
 use App\Services\FinancialAuditLogger;
+use App\Services\BillingPaymentService;
+use App\Models\AuditLog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -15,423 +18,362 @@ use Carbon\Carbon;
 
 class BillController extends Controller
 {
-    /**
-     * =================================================================
-     * 1. MONITORING & LAPORAN (INDEX)
-     * =================================================================
-     * Menampilkan daftar tagihan, filter (termasuk tanggal), dan ringkasan.
-     */
+    // =========================================================================
+    // 1. INDEX — Monitoring & Laporan
+    // =========================================================================
     public function index(Request $request)
     {
-        // Data untuk Dropdown Filter
-        $classes = Student::select('class_name')->distinct()->orderBy('class_name')->pluck('class_name');
-        $types = StudentBill::select('type')->distinct()->pluck('type');
+        // Dropdown filter: sourced from master kelas, not distinct class_name
+        $kelasList = Kelas::aktif()->orderBy('tingkat')->orderBy('nama_kelas')->get();
+        $types     = StudentBill::select('type')->distinct()->pluck('type');
 
-        // Query Dasar
-        $query = StudentBill::with('student')->latest();
+        $query = StudentBill::with('student.kelas')->latest();
 
-        // --- FILTERING ---
-        
-        // 1. Filter Kelas
-        if ($request->class_name) {
-            $query->whereHas('student', fn($q) => $q->where('class_name', $request->class_name));
+        // Filter 1 — Kelas (via kelas_id relation, falls back to class_name for legacy)
+        if ($request->kelas_id) {
+            $query->whereHas('student', fn($q) => $q->where('kelas_id', $request->kelas_id));
+        } elseif ($request->class_name) {
+            // Phase 9.3: class_name dropped — ignore legacy param, no-op
+            // (old bookmarks with ?class_name= will show unfiltered results)
         }
-        // 2. Filter Status
+
+        // Filter 2 — Status
         if ($request->status) {
             $query->where('status', $request->status);
         }
-        // 3. Filter Tipe
+
+        // Filter 3 — Tipe
         if ($request->type) {
             $query->where('type', $request->type);
         }
-        // 4. Filter Search (Nama Siswa / Tagihan)
+
+        // Filter 4 — Search
         if ($request->search) {
-            $query->where(function($q) use ($request) {
+            $query->where(function ($q) use ($request) {
                 $q->where('name', 'like', '%' . $request->search . '%')
                   ->orWhereHas('student', fn($sq) => $sq->where('name', 'like', '%' . $request->search . '%'));
             });
         }
-        // 5. Filter Tanggal
+
+        // Filter 5 — Tanggal
         if ($request->start_date && $request->end_date) {
             $query->whereBetween('created_at', [
                 $request->start_date . ' 00:00:00',
-                $request->end_date . ' 23:59:59'
+                $request->end_date . ' 23:59:59',
             ]);
         }
 
-        // Hitung Summary (Clone query agar angka summary sesuai filter yang aktif)
         $totalTagihan    = (clone $query)->sum('amount');
         $totalSudahBayar = (clone $query)->where('status', 'PAID')->sum('amount');
         $totalTunggakan  = (clone $query)->where('status', 'UNPAID')->sum('amount');
 
-        // Pagination
         $bills = $query->paginate(20)->withQueryString();
 
         return view('bills.index', compact(
-            'bills', 'classes', 'types',
+            'bills', 'kelasList', 'types',
             'totalTagihan', 'totalSudahBayar', 'totalTunggakan'
         ));
     }
 
-    /**
-     * =================================================================
-     * 2. HALAMAN GENERATOR TAGIHAN (CREATE)
-     * =================================================================
-     */
+    // =========================================================================
+    // 2. CREATE — Generator Tagihan
+    // =========================================================================
     public function create()
     {
-        $students = Student::where('status', 'active')->orderBy('class_name')->orderBy('name')->get();
-        $classes = Student::select('class_name')->distinct()->orderBy('class_name')->pluck('class_name');
-        $bundles = PosBundle::where('is_active', true)->get();
+        // Students for individual picker — show name + kelas.nama_kelas (from relation)
+        $students = Student::with('kelas')
+            ->where('status', 'active')
+            ->orderBy('name')
+            ->get();
 
-        return view('bills.create', compact('students', 'bundles', 'classes'));
+        // Kelas for class-target picker — sourced from master
+        $kelasList = Kelas::aktif()->orderBy('tingkat')->orderBy('nama_kelas')->get();
+
+        $bundles = PosBundle::where('is_active', true)->orderBy('name')->get();
+
+        return view('bills.create', compact('students', 'kelasList', 'bundles'));
     }
 
-    /**
-     * =================================================================
-     * 3. PROSES SIMPAN (STORE)
-     * =================================================================
-     */
+    // =========================================================================
+    // 3. STORE — Proses Tagihan
+    // =========================================================================
     public function store(Request $request)
     {
-        // Phase 3.3 — hardened bill creation validation.
-        // All financial amounts must be > 0. Items must have at least one entry.
-        $allowedTypes = ['SPP', 'DAFTAR_ULANG', 'LAINNYA'];
-
-        $rules = [
+        $request->validate([
             'target_type' => 'required|in:student,class,all',
-            'student_id'  => 'required_if:target_type,student|integer',
-            'class_name'  => 'required_if:target_type,class|string',
-            // Phase 3.3: type must be one of the known values — not just any string.
-            'type'        => 'required|in:' . implode(',', $allowedTypes),
-        ];
+            'type'        => 'required|in:SPP,PAKET,DAFTAR_ULANG,LAINNYA',
+        ]);
 
-        if ($request->type == 'SPP') {
-            $rules['spp_month']  = 'required|integer|min:1|max:12';
-            $rules['spp_year']   = 'required|integer|min:2020|max:2099';
-            // Phase 3.3: min:1 not min:0 — zero-amount SPP bill is not valid.
-            $rules['spp_amount'] = 'required|numeric|min:1';
+        $targetType = $request->target_type;
+        $type       = strtoupper($request->type);
+        $isSpp      = ($type === 'SPP');
+
+        // ── Resolve target students ──────────────────────────────────────────
+        if ($targetType === 'student') {
+            $request->validate(['student_id' => 'required|exists:students,id']);
+            $students = Student::where('id', $request->student_id)
+                ->where('status', 'active')
+                ->get();
+        } elseif ($targetType === 'class') {
+            $request->validate(['kelas_id' => 'required|exists:kelas,id']);
+            $students = Student::where('kelas_id', $request->kelas_id)
+                ->where('status', 'active')
+                ->get();
         } else {
-            $rules['name']         = 'required|string|max:255';
-            // Phase 3.3: require at least 1 item, validate each element.
-            $rules['item_names']   = 'required|array|min:1';
-            $rules['item_names.*'] = 'required|string|max:255';
-            // Phase 3.3: price and qty must be positive — prevents zero/negative bills.
-            $rules['item_prices']   = 'required|array|min:1';
-            $rules['item_prices.*'] = 'required|numeric|min:0.01';
-            $rules['item_qtys']     = 'required|array|min:1';
-            $rules['item_qtys.*']   = 'required|integer|min:1';
+            $students = Student::where('status', 'active')->get();
         }
 
-        $request->validate($rules);
+        // Discount fields — validated once, applied per-bill
+        $discountAmount = max(0, (float) ($request->discount_amount ?? 0));
+        $discountNote   = $request->discount_note ?? null;
+
+        if ($students->isEmpty()) {
+            return back()->with('error', 'Tidak ada siswa aktif yang sesuai target.')->withInput();
+        }
+
+        $count   = 0;
+        $skipped = 0;
 
         try {
-            DB::beginTransaction();
-
-            // Cari Target Siswa
-            $studentsToBill = collect([]);
-            if ($request->target_type == 'student') {
-                $studentsToBill = Student::where('id', $request->student_id)->get();
-            } elseif ($request->target_type == 'class') {
-                $studentsToBill = Student::where('class_name', $request->class_name)->where('status', 'active')->get();
-            } elseif ($request->target_type == 'all') {
-                $studentsToBill = Student::where('status', 'active')->get();
-            }
-
-            if ($studentsToBill->isEmpty()) {
-                return back()->with('error', 'Tidak ada siswa yang ditemukan.');
-            }
-
-            $count = 0;
-            $bulanIndo = [1=>'Januari', 2=>'Februari', 3=>'Maret', 4=>'April', 5=>'Mei', 6=>'Juni', 7=>'Juli', 8=>'Agustus', 9=>'September', 10=>'Oktober', 11=>'November', 12=>'Desember'];
-
-            foreach ($studentsToBill as $student) {
-
-                // Logic Penamaan & Jatuh Tempo
-                if ($request->type == 'SPP') {
-                    $billName    = "SPP " . $bulanIndo[$request->spp_month] . " " . $request->spp_year;
-                    $totalAmount = $request->spp_amount;
-                    $billMonth   = $request->spp_month;
-                    $billYear    = $request->spp_year;
-
-                    try {
-                        $dueDate = Carbon::createFromDate($billYear, $billMonth, 10);
-                    } catch (\Exception $e) {
-                        $dueDate = now();
-                    }
-
-                    $exists = StudentBill::where('student_id', $student->id)
-                                         ->where('type', 'SPP')
-                                         ->where('bill_month', $billMonth)
-                                         ->where('bill_year', $billYear)
-                                         ->exists();
-                } else {
-                    $billName    = $request->name;
-                    $totalAmount = 0;
-                    foreach ($request->item_prices as $idx => $price) {
-                        $totalAmount += ($price * $request->item_qtys[$idx]);
-                    }
-                    $billMonth = null;
-                    $billYear  = null;
-                    $dueDate   = null;
-
-                    $exists = StudentBill::where('student_id', $student->id)
-                                         ->where('name', $billName)
-                                         ->where('type', $request->type)
-                                         ->where('status', 'UNPAID')
-                                         ->exists();
-                }
-
-                if (!$exists) {
-                    // Create Bill Header
-                    // Phase 3.5: record created_by for audit trail.
-                    $bill = StudentBill::create([
-                        'student_id' => $student->id,
-                        'name'       => $billName,
-                        'type'       => $request->type,
-                        'amount'     => $totalAmount,
-                        'status'     => 'UNPAID',
-                        'bill_month' => $billMonth,
-                        'bill_year'  => $billYear,
-                        'due_date'   => $dueDate,
-                        'created_by' => Auth::id(),
+            DB::transaction(function () use (
+                $students, $type, $isSpp, $request, $discountAmount, $discountNote, &$count, &$skipped
+            ) {
+            foreach ($students as $student) {
+                if ($isSpp) {
+                    // ── SPP flow ─────────────────────────────────────────────
+                    $request->validate([
+                        'spp_month'  => 'required|integer|between:1,12',
+                        'spp_year'   => 'required|digits:4',
+                        'spp_amount' => 'required|numeric|min:1',
                     ]);
 
-                    // Create Bill Items
-                    if ($request->type == 'SPP') {
-                        BillItem::create([
+                    $month  = (int) $request->spp_month;
+                    $year   = (int) $request->spp_year;
+                    $amount = (float) $request->spp_amount;
+
+                    // Dedup: one SPP bill per student per month/year
+                    $exists = StudentBill::where('student_id', $student->id)
+                        ->where('type', 'SPP')
+                        ->where('bill_month', $month)
+                        ->where('bill_year', $year)
+                        ->exists();
+
+                    if ($exists) {
+                        $skipped++;
+                        continue;
+                    }
+
+                    $monthName = Carbon::createFromDate($year, $month, 1)->translatedFormat('F');
+                    $dueDate   = Carbon::createFromDate($year, $month, 10)->toDateString();
+
+                    $finalAmount    = max(0, $amount - $discountAmount);
+
+                    $bill = StudentBill::create([
+                        'student_id'      => $student->id,
+                        'name'            => "SPP {$monthName} {$year}",
+                        'type'            => 'SPP',
+                        'amount'          => $finalAmount,
+                        'original_amount' => $amount,
+                        'discount_amount' => $discountAmount,
+                        'discount_note'   => $discountNote,
+                        'bill_month'      => $month,
+                        'bill_year'       => $year,
+                        'due_date'        => $dueDate,
+                        'status'          => 'UNPAID',
+                        'created_by'      => Auth::id(),
+                    ]);
+
+                    FinancialAuditLogger::billCreated($bill);
+
+                } else {
+                    // ── Regular bill flow ─────────────────────────────────────
+                    $request->validate([
+                        'name'          => 'required|string|max:255',
+                        'item_names'    => 'required|array|min:1',
+                        'item_names.*'  => 'nullable|string',
+                        'item_prices'   => 'required|array|min:1',
+                        'item_prices.*' => 'nullable|numeric|min:1',
+                        'item_qtys'     => 'required|array|min:1',
+                        'item_qtys.*'   => 'nullable|integer|min:1',
+                    ]);
+
+                    // Calculate total from items
+                    $total = 0;
+                    $items = [];
+                    foreach ($request->item_names as $i => $itemName) {
+                        if (empty($itemName) && empty($request->item_prices[$i])) continue;
+                        $qty      = (int)   ($request->item_qtys[$i]   ?? 1);
+                        $price    = (float) ($request->item_prices[$i]  ?? 0);
+                        $subtotal = $qty * $price;
+                        $total   += $subtotal;
+                        $items[]  = [
+                            'item_name'     => $itemName,
+                            'quantity'      => $qty,
+                            'price'         => $price,
+                            'subtotal'      => $subtotal,
+                            'pos_bundle_id' => $request->item_bundle_ids[$i] ?? null,
+                        ];
+                    }
+
+                    $finalAmount = max(0, $total - $discountAmount);
+
+                    $bill = StudentBill::create([
+                        'student_id'      => $student->id,
+                        'name'            => $request->name,
+                        'type'            => $type,
+                        'amount'          => $finalAmount,
+                        'original_amount' => $total,
+                        'discount_amount' => $discountAmount,
+                        'discount_note'   => $discountNote,
+                        'status'          => 'UNPAID',
+                        'created_by'      => Auth::id(),
+                    ]);
+
+                    foreach ($items as $item) {
+                        BillItem::create(array_merge($item, [
                             'student_bill_id' => $bill->id,
-                            'item_name'       => $billName,
-                            'quantity'        => 1,
-                            'price'           => $totalAmount,
-                            'subtotal'        => $totalAmount
-                        ]);
-                    } else {
-                        foreach ($request->item_names as $index => $itemName) {
-                            $bundleId = $request->item_bundle_ids[$index] ?? null;
-                            BillItem::create([
-                                'student_bill_id' => $bill->id,
-                                'pos_bundle_id'   => $bundleId,
-                                'item_name'       => $itemName,
-                                'quantity'        => $request->item_qtys[$index],
-                                'price'           => $request->item_prices[$index],
-                                'subtotal'        => $request->item_prices[$index] * $request->item_qtys[$index],
-                            ]);
-                        }
+                        ]));
                     }
-                    // Phase 3.5: log BILL_CREATED inside the same transaction.
-                    FinancialAuditLogger::billCreated($bill, 'WEB', Auth::id(), $request);
-                    $count++;
+
+                    FinancialAuditLogger::billCreated($bill);
                 }
+
+                $count++;
             }
-
-            DB::commit();
-            return redirect()->route('bills.index')->with('success', "Sukses! Tagihan berhasil dibuat untuk {$count} siswa.");
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return back()->with('error', 'Gagal membuat tagihan: ' . $e->getMessage());
+        });
+        } catch (\Illuminate\Database\QueryException $e) {
+            return back()->withInput()
+                ->withErrors(['amount' => 'Nominal tagihan tidak valid: ' . $e->getMessage()]);
         }
+
+        $msg = "Berhasil membuat {$count} tagihan";
+        if ($skipped > 0) $msg .= ", {$skipped} dilewati (sudah ada)";
+
+        return redirect()->route('bills.index')->with('success', $msg . '.');
     }
 
-    /**
-     * =================================================================
-     * 4. PROSES BAYAR (PAY) — CASH / MANUAL
-     * =================================================================
-     *
-     * Phase 2.3 changes:
-     *   - paid_at = now()     (canonical payment timestamp)
-     *   - confirmed_by = Auth::id()  (audit trail: which TU confirmed)
-     *   - removed manual 'updated_at' override (Eloquent handles this)
-     *   - stock pre-validation BEFORE any mutation (fail-fast)
-     *   - all mutations inside ONE DB::transaction()
-     *
-     * Timezone: now() uses app timezone Asia/Jakarta (config/app.php).
-     * No manual offset needed.
-     */
-    public function pay($id)
+    // =========================================================================
+    // 4. PAY — Konfirmasi Pembayaran Tunai
+    // =========================================================================
+    public function pay(Request $request, $id)
     {
+        $bill = StudentBill::with(['student', 'items.product'])->findOrFail($id);
+
         try {
-            $bill = StudentBill::with('items')->findOrFail($id);
-
-            // Guard: already paid — do not overwrite any payment fields.
-            if ($bill->status == 'PAID') {
-                return back()->with('error', 'Tagihan ini sudah lunas sebelumnya!');
+            app(BillingPaymentService::class)->payCash($bill, Auth::id());
+        } catch (\RuntimeException $e) {
+            if ($request->ajax() || $request->wantsJson()) {
+                return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
             }
-
-            DB::beginTransaction();
-
-            // ── PHASE 2.3: Stock Pre-Validation ──────────────────────────
-            // Validate ALL required stock deductions BEFORE mutating anything.
-            // If any product has insufficient stock, the entire transaction
-            // is aborted cleanly — bill stays UNPAID, no stock is touched.
-            if ($bill->items && $bill->items->count() > 0) {
-                foreach ($bill->items as $billItem) {
-                    if ($billItem->pos_bundle_id) {
-                        $bundle = PosBundle::with('items')->find($billItem->pos_bundle_id);
-                        if ($bundle) {
-                            foreach ($bundle->items as $bundleItem) {
-                                $product = PosItem::find($bundleItem->pos_item_id);
-                                if ($product) {
-                                    $qtyRequired = $billItem->quantity * $bundleItem->quantity;
-                                    if ($product->stock < $qtyRequired) {
-                                        DB::rollBack();
-                                        return back()->with('error',
-                                            "Stok barang '{$product->name}' tidak mencukupi. " .
-                                            "Dibutuhkan: {$qtyRequired}, tersedia: {$product->stock}."
-                                        );
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            // ── End Stock Pre-Validation ──────────────────────────────────
-
-            // ── PHASE 2.3: Bill Update ────────────────────────────────────
-            // Set all payment audit fields in one atomic update.
-            // confirmed_by: the authenticated admin/TU user confirming payment.
-            // paid_at:      exact timestamp of this confirmation (Asia/Jakarta).
-            $bill->update([
-                'status'         => 'PAID',
-                'paid_at'        => now(),
-                'payment_method' => 'CASH',
-                'confirmed_by'   => Auth::id(),
-            ]);
-            // ── End Bill Update ───────────────────────────────────────────
-
-            // Phase 3.5: log PAYMENT_CONFIRMED inside the same transaction.
-            $bill->refresh();
-            FinancialAuditLogger::paymentConfirmed($bill, 'WEB', Auth::id(), request());
-
-            // ── Stock Deduction ───────────────────────────────────────────
-            // Pre-validation passed — safe to decrement.
-            if ($bill->items && $bill->items->count() > 0) {
-                foreach ($bill->items as $billItem) {
-                    if ($billItem->pos_bundle_id) {
-                        $bundle = PosBundle::with('items')->find($billItem->pos_bundle_id);
-                        if ($bundle) {
-                            foreach ($bundle->items as $bundleItem) {
-                                $product = PosItem::find($bundleItem->pos_item_id);
-                                if ($product) {
-                                    $qtyOut = $billItem->quantity * $bundleItem->quantity;
-                                    $product->decrement('stock', $qtyOut);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            // ── End Stock Deduction ───────────────────────────────────────
-
-            DB::commit();
-            return back()->with('success', "Pembayaran LUNAS (CASH) diterima. Stok barang (jika ada) otomatis dipotong.");
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return back()->with('error', 'Gagal memproses pembayaran: ' . $e->getMessage());
+            return back()->with('error', $e->getMessage());
         }
+
+        if ($request->ajax() || $request->wantsJson()) {
+            return response()->json(['success' => true, 'message' => 'Pembayaran berhasil dicatat.']);
+        }
+
+        return back()->with('success', "Pembayaran tagihan {$bill->name} untuk {$bill->student->name} berhasil dicatat.");
     }
 
-    /**
-     * =================================================================
-     * 5. HAPUS TAGIHAN (DESTROY)
-     * =================================================================
-     */
+    // =========================================================================
+    // 5. DESTROY — Hapus Tagihan (hanya UNPAID)
+    // =========================================================================
     public function destroy($id)
     {
-        try {
-            $bill = StudentBill::findOrFail($id);
-            if ($bill->status == 'PAID') {
-                return back()->with('error', 'Dilarang menghapus tagihan yang sudah LUNAS.');
+        $bill = StudentBill::findOrFail($id);
+
+        if ($bill->status === 'PAID') {
+            if (request()->wantsJson()) {
+                return response()->json(['success' => false, 'message' => 'Tagihan lunas tidak dapat dihapus.'], 422);
             }
-
-            DB::beginTransaction();
-
-            // Phase 3.5: capture snapshot BEFORE deletion, then log atomically.
-            FinancialAuditLogger::billDeleted($bill, 'WEB', request());
-            $bill->delete();
-
-            DB::commit();
-            return back()->with('success', 'Tagihan berhasil dihapus.');
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return back()->with('error', 'Gagal menghapus: ' . $e->getMessage());
+            return back()->with('error', 'Tagihan lunas tidak dapat dihapus.');
         }
+
+        $name = $bill->name;
+        $bill->items()->delete();
+        $bill->delete();
+
+        FinancialAuditLogger::billDeleted($bill, AuditLog::SOURCE_WEB);
+
+        if (request()->wantsJson()) {
+            return response()->json(['success' => true, 'message' => "Tagihan {$name} berhasil dihapus."]);
+        }
+
+        return back()->with('success', "Tagihan {$name} berhasil dihapus.");
     }
 
-    /**
-     * =================================================================
-     * 6. CETAK KWITANSI (PRINT)
-     * =================================================================
-     */
+    // =========================================================================
+    // 6. PRINT — Cetak Kwitansi
+    // =========================================================================
     public function print($id)
     {
-        $bill = StudentBill::with(['student', 'items'])->findOrFail($id);
+        $bill   = StudentBill::with(['student.kelas', 'items'])->findOrFail($id);
+        $school = DB::table('school_settings')->pluck('value', 'key');
 
-        if ($bill->status == 'UNPAID') {
-            return back()->with('error', 'Tagihan belum lunas, tidak bisa cetak kwitansi!');
-        }
-
-        $school    = DB::table('school_settings')->pluck('value', 'key');
-        $terbilang = $this->terbilang($bill->amount) . ' Rupiah';
-
-        return view('bills.print', compact('bill', 'terbilang', 'school'));
+        return view('bills.print', compact('bill', 'school'));
     }
 
-    /**
-     * =================================================================
-     * 7. EXPORT CSV (INDEX FILTERED)
-     * =================================================================
-     */
+    // =========================================================================
+    // 7. EXPORT — CSV Export
+    // =========================================================================
     public function export(Request $request)
     {
-        $query = StudentBill::with('student')->latest();
+        $query = StudentBill::with('student.kelas')->latest();
 
-        if ($request->class_name) $query->whereHas('student', fn($q) => $q->where('class_name', $request->class_name));
+        // Same filters as index — use kelas_id as primary
+        if ($request->kelas_id) {
+            $query->whereHas('student', fn($q) => $q->where('kelas_id', $request->kelas_id));
+        } elseif ($request->class_name) {
+            // Phase 9.3: class_name dropped — ignore legacy export param
+        }
         if ($request->status)     $query->where('status', $request->status);
         if ($request->type)       $query->where('type', $request->type);
-        if ($request->search) {
-            $query->where(function($q) use ($request) {
-                $q->where('name', 'like', '%' . $request->search . '%')
-                  ->orWhereHas('student', fn($sq) => $sq->where('name', 'like', '%' . $request->search . '%'));
-            });
-        }
         if ($request->start_date && $request->end_date) {
             $query->whereBetween('created_at', [
                 $request->start_date . ' 00:00:00',
-                $request->end_date . ' 23:59:59'
+                $request->end_date   . ' 23:59:59',
             ]);
         }
 
-        $bills    = $query->get();
-        $filename = 'Laporan-Tagihan-' . date('Y-m-d-His') . '.csv';
+        $bills = $query->get();
 
-        return response()->streamDownload(function () use ($bills) {
-            $handle = fopen('php://output', 'w');
-            fputcsv($handle, ['No', 'Nama Siswa', 'NIS', 'Kelas', 'Jenis', 'Keterangan', 'Metode Bayar', 'Nominal (Rp)', 'Status', 'Tgl Jatuh Tempo', 'Tgl Update']);
+        $headers = [
+            'Content-Type'        => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="tagihan-' . now()->format('Ymd-His') . '.csv"',
+        ];
 
-            foreach ($bills as $k => $bill) {
-                fputcsv($handle, [
-                    $k + 1,
-                    $bill->student->name,
-                    $bill->student->nis,
-                    $bill->student->class_name,
-                    $bill->type,
+        $callback = function () use ($bills) {
+            $file = fopen('php://output', 'w');
+            fputcsv($file, ['No', 'Nama Siswa', 'NIS', 'Kelas', 'Tagihan', 'Tipe', 'Nominal', 'Status', 'Tgl Buat', 'Tgl Bayar']);
+
+            foreach ($bills as $i => $bill) {
+                // kelas column: use relation (kelas.nama_kelas), fall back to class_name
+                $kelasLabel = optional($bill->student->kelas)->nama_kelas ?? '-';
+
+                fputcsv($file, [
+                    $i + 1,
+                    $bill->student->name ?? '-',
+                    $bill->student->nis  ?? '-',
+                    $kelasLabel,
                     $bill->name,
-                    $bill->payment_method ?? '-',
+                    $bill->type,
                     $bill->amount,
-                    $bill->status == 'PAID' ? 'LUNAS' : 'BELUM',
-                    $bill->due_date ? Carbon::parse($bill->due_date)->format('d/m/Y') : '-',
-                    $bill->updated_at->format('d/m/Y H:i')
+                    $bill->status,
+                    $bill->created_at->format('d/m/Y'),
+                    $bill->payment_date ? Carbon::parse($bill->payment_date)->format('d/m/Y') : '-',
                 ]);
             }
-            fclose($handle);
-        }, $filename);
+
+            fclose($file);
+        };
+
+        return response()->stream($callback, 200, $headers);
     }
 
-    private function terbilang($nilai)
+    // =========================================================================
+    // HELPER — Terbilang (angka → huruf Indonesia)
+    // =========================================================================
+    public function terbilang($nilai)
     {
         $nilai = abs($nilai);
         $huruf = ["", "Satu", "Dua", "Tiga", "Empat", "Lima", "Enam", "Tujuh", "Delapan", "Sembilan", "Sepuluh", "Sebelas"];

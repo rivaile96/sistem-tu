@@ -72,6 +72,12 @@
                 </p>
 
                 {{-- Amount --}}
+                @if($bill->original_amount && $bill->original_amount != $bill->amount)
+                <div class="mb-3 text-center space-y-0.5">
+                    <p class="text-gray-400 text-sm line-through">Rp {{ number_format($bill->original_amount, 0, ',', '.') }}</p>
+                    <p class="text-red-500 text-xs">Diskon Rp {{ number_format($bill->discount_amount, 0, ',', '.') }}{{ $bill->discount_note ? ' — ' . $bill->discount_note : '' }}</p>
+                </div>
+                @endif
                 <p class="text-center text-green-600 font-extrabold text-3xl mb-6">
                     Rp {{ number_format($bill->amount, 0, ',', '.') }}
                 </p>
@@ -101,10 +107,10 @@
                     </div>
 
                     {{-- Kelas --}}
-                    @if($student->class_name)
+                    @if($student->kelas_id)
                     <div class="flex items-start justify-between gap-4">
                         <span class="text-xs text-gray-400 shrink-0 pt-0.5 w-28">Kelas</span>
-                        <span class="text-sm font-semibold text-gray-800 text-right">{{ $student->class_name }}</span>
+                        <span class="text-sm font-semibold text-gray-800 text-right">{{ optional($student->kelas)->nama_kelas ?? '-' }}</span>
                     </div>
                     @endif
 

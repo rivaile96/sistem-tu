@@ -23,8 +23,16 @@
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="BROADCAST_CONNECTION" value="null"/>
         <env name="CACHE_STORE" value="array"/>
-        <env name="DB_CONNECTION" value="sqlite"/>
-        <env name="DB_DATABASE" value=":memory:"/>
+        <!-- Phase 8.1: switched from sqlite :memory: to MariaDB test database.
+             SQLite is incompatible with MariaDB-specific SQL in several migrations
+             (INNER JOIN in UPDATE, NOW(), FIELD(), enum modifiers).
+             Create a dedicated DB first:
+               CREATE DATABASE sistem_tu_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+             Then set DB_TEST_* in .env.testing or override here. -->
+        <env name="DB_CONNECTION" value="mariadb"/>
+        <env name="DB_DATABASE" value="sistem_tu_test"/>
+        <env name="DB_USERNAME" value="root"/>
+        <env name="DB_PASSWORD" value=""/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>

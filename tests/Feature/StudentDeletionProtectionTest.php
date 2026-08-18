@@ -35,16 +35,27 @@ test('Student model uses SoftDeletes trait', function () {
 });
 
 test('student_bills student_id FK is RESTRICT not CASCADE', function () {
-    // Run a raw query against sqlite_master to find the FK definition.
-    // On SQLite the FK info is in the CREATE TABLE statement.
-    $fkInfo = DB::select("PRAGMA foreign_key_list('student_bills')");
-    $studentIdFk = collect($fkInfo)->firstWhere('from', 'student_id');
+    // Phase 8.1: switched from SQLite PRAGMA to MariaDB INFORMATION_SCHEMA.
+    $dbName = config('database.connections.' . config('database.default') . '.database');
+    $fkInfo = DB::select("
+        SELECT CONSTRAINT_NAME, DELETE_RULE
+        FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS
+        WHERE CONSTRAINT_SCHEMA = ?
+          AND CONSTRAINT_NAME IN (
+              SELECT CONSTRAINT_NAME
+              FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+              WHERE TABLE_SCHEMA = ?
+                AND TABLE_NAME = 'student_bills'
+                AND COLUMN_NAME = 'student_id'
+                AND REFERENCED_TABLE_NAME = 'students'
+          )
+    ", [$dbName, $dbName]);
+
+    $studentIdFk = collect($fkInfo)->first();
 
     expect($studentIdFk)->not->toBeNull();
-    // SQLite RESTRICT and NO ACTION both appear as 'NO ACTION' in PRAGMA output
-    // because SQLite treats them identically at the deferred check level.
-    // What matters is that CASCADE is NOT set.
-    expect(strtoupper($studentIdFk->on_delete))->not->toBe('CASCADE');
+    // Must be RESTRICT or NO ACTION — not CASCADE
+    expect(strtoupper($studentIdFk->DELETE_RULE))->not->toBe('CASCADE');
 });
 
 // ── 1. calon_siswa without bills → allowed ───────────────────────────────────

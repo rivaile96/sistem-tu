@@ -76,11 +76,7 @@ class KelasController extends Controller
 
         $validated['is_aktif'] = $request->boolean('is_aktif', true);
 
-        // Sync class_name di students kalau nama_kelas berubah
-        if ($kelas->nama_kelas !== $validated['nama_kelas']) {
-            $kelas->students()->update(['class_name' => $validated['nama_kelas']]);
-        }
-
+        // Phase 9.3: class_name column dropped — kelas_id is canonical.
         $kelas->update($validated);
 
         if ($request->ajax() || $request->wantsJson()) {

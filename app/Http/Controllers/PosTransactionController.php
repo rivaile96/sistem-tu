@@ -23,11 +23,17 @@ class PosTransactionController extends Controller
                         ->orderBy('name')
                         ->get();
 
-        // Ambil Data Siswa Aktif (Untuk Dropdown Pencarian saat Hutang)
-        // Kita cuma ambil kolom yg perlu aja biar ringan
-        $students = Student::where('status', 'active')
+        // Include kelas_id so we can resolve kelas name in the view
+        $students = Student::with('kelas')
+                           ->where('status', 'active')
                            ->orderBy('name')
-                           ->get(['id', 'name', 'nis', 'class_name']);
+                           ->get(['id', 'name', 'nis', 'kelas_id'])
+                           ->map(fn($s) => [
+                               'id'         => $s->id,
+                               'name'       => $s->name,
+                               'nis'        => $s->nis,
+                               'class_name' => optional($s->kelas)->nama_kelas ?? '-',
+                           ]);
 
         return view('pos.transaction.index', compact('items', 'students'));
     }

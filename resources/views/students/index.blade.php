@@ -111,20 +111,33 @@
                                class="w-full pl-12 pr-4 py-3.5 rounded-xl border border-gray-200 focus:border-[#0284c7] focus:ring-2 focus:ring-[#0284c7]/20 bg-white transition-all duration-300">
                     </div>
                 </div>
-                <div class="w-full lg:w-48">
+                <div class="w-full lg:w-52">
+                    <label class="block text-sm font-bold text-gray-700 mb-2">Kelas</label>
+                    <select name="kelas_id" class="w-full py-3.5 px-4 rounded-xl border border-gray-200 focus:border-[#0284c7] focus:ring-2 focus:ring-[#0284c7]/20 bg-white transition-all duration-300">
+                        <option value="">Semua Kelas</option>
+                        @foreach($kelasList as $kelas)
+                            <option value="{{ $kelas->id }}" {{ request('kelas_id') == $kelas->id ? 'selected' : '' }}>
+                                {{ $kelas->nama_kelas }}
+                            </option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="w-full lg:w-44">
                     <label class="block text-sm font-bold text-gray-700 mb-2">Status</label>
                     <select name="status" class="w-full py-3.5 px-4 rounded-xl border border-gray-200 focus:border-[#0284c7] focus:ring-2 focus:ring-[#0284c7]/20 bg-white transition-all duration-300">
                         <option value="">Semua Status</option>
-                        <option value="aktif" {{ request('status') === 'aktif' ? 'selected' : '' }}>Aktif</option>
-                        <option value="tidak_aktif" {{ request('status') === 'tidak_aktif' ? 'selected' : '' }}>Tidak Aktif</option>
-                        <option value="calon" {{ request('status') === 'calon' ? 'selected' : '' }}>Calon Siswa</option>
+                        <option value="active" {{ request('status') === 'active' ? 'selected' : '' }}>Aktif</option>
+                        <option value="calon_siswa" {{ request('status') === 'calon_siswa' ? 'selected' : '' }}>Calon Siswa</option>
+                        <option value="keluar" {{ request('status') === 'keluar' ? 'selected' : '' }}>Keluar / DO</option>
+                        <option value="graduated" {{ request('status') === 'graduated' ? 'selected' : '' }}>Lulus</option>
+                        <option value="alumni" {{ request('status') === 'alumni' ? 'selected' : '' }}>Alumni</option>
                     </select>
                 </div>
                 <button type="submit"
                         class="flex items-center gap-2 bg-[#0284c7] text-white px-6 py-3.5 rounded-xl hover:bg-[#0369a1] transition-all duration-300 font-medium shadow-sm text-sm whitespace-nowrap">
                     Cari
                 </button>
-                @if(request('search') || request('status'))
+                @if(request('search') || request('status') || request('kelas_id'))
                 <a href="{{ route('students.index') }}"
                    class="flex items-center gap-2 bg-white border border-gray-200 text-gray-600 px-6 py-3.5 rounded-xl hover:border-gray-300 transition-all duration-200 text-sm whitespace-nowrap">
                     Reset
@@ -172,7 +185,7 @@
                             </td>
                             <td class="px-6 py-4">
                                 <span class="inline-flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-gray-50 to-gray-100 rounded-full border border-gray-200 font-bold text-gray-700 text-sm">
-                                    {{ $student->class_name }}
+                                    {{ optional($student->kelas)->nama_kelas ?? '-' }}
                                 </span>
                             </td>
                             <td class="px-6 py-4">
@@ -264,18 +277,24 @@
                     </select>
                 </div>
                 <div>
-                    <label class="block text-sm font-semibold text-gray-700 mb-1.5">Kelas</label>
-                    <input type="text" name="class_name" placeholder="Contoh: X IPA 1"
-                           class="w-full border border-gray-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-[#0284c7]/20 focus:border-[#0284c7] outline-none text-sm transition-all">
+                    <label class="block text-sm font-semibold text-gray-700 mb-1.5">Kelas <span class="text-red-500">*</span></label>
+                    <select name="kelas_id" class="w-full border border-gray-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-[#0284c7]/20 focus:border-[#0284c7] outline-none text-sm transition-all bg-white">
+                        <option value="">-- Pilih Kelas --</option>
+                        @foreach($kelasList as $kelas)
+                            <option value="{{ $kelas->id }}">{{ $kelas->nama_kelas }}</option>
+                        @endforeach
+                    </select>
                 </div>
                 <div>
                     <label class="block text-sm font-semibold text-gray-700 mb-1.5">Tempat Lahir</label>
                     <input type="text" name="birth_place" placeholder="Kota/kabupaten"
+                           value="{{ old('birth_place') }}"
                            class="w-full border border-gray-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-[#0284c7]/20 focus:border-[#0284c7] outline-none text-sm transition-all">
                 </div>
                 <div>
                     <label class="block text-sm font-semibold text-gray-700 mb-1.5">Tanggal Lahir</label>
                     <input type="date" name="birth_date"
+                           value="{{ old('birth_date') }}"
                            class="w-full border border-gray-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-[#0284c7]/20 focus:border-[#0284c7] outline-none text-sm transition-all">
                 </div>
                 <div>
@@ -305,16 +324,8 @@
                     <input type="text" name="parent_phone" placeholder="08xxxxxxxxxx"
                            class="w-full border border-gray-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-[#0284c7]/20 focus:border-[#0284c7] outline-none text-sm transition-all">
                 </div>
-                <div>
-                    <label class="block text-sm font-semibold text-gray-700 mb-1.5">Status</label>
-                    <select name="status" class="w-full border border-gray-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-[#0284c7]/20 focus:border-[#0284c7] outline-none text-sm transition-all bg-white">
-                        <option value="active">Aktif</option>
-                        <option value="pindah_keluar">Pindah Keluar</option>
-                        <option value="keluar">Keluar / DO</option>
-                        <option value="graduated">Lulus</option>
-                        <option value="alumni">Alumni</option>
-                        <option value="calon_siswa">Calon Siswa</option>
-                    </select>
+                <div class="md:col-span-2 p-3 rounded-xl border border-green-200 bg-green-50">
+                    <p class="text-xs text-green-700 font-semibold">Status: Siswa Aktif (input langsung TU selalu aktif)</p>
                 </div>
                 <div class="md:col-span-2">
                     <label class="block text-sm font-semibold text-gray-700 mb-1.5">Alamat</label>
@@ -379,9 +390,13 @@
                     </select>
                 </div>
                 <div>
-                    <label class="block text-sm font-semibold text-gray-700 mb-1.5">Kelas</label>
-                    <input type="text" name="class_name" id="editClassName"
-                           class="w-full border border-gray-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-[#0284c7]/20 focus:border-[#0284c7] outline-none text-sm transition-all">
+                    <label class="block text-sm font-semibold text-gray-700 mb-1.5">Kelas <span class="text-red-500">*</span></label>
+                    <select name="kelas_id" id="editKelasId" class="w-full border border-gray-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-[#0284c7]/20 focus:border-[#0284c7] outline-none text-sm transition-all bg-white">
+                        <option value="">-- Pilih Kelas --</option>
+                        @foreach($kelasList as $kelas)
+                            <option value="{{ $kelas->id }}">{{ $kelas->nama_kelas }}</option>
+                        @endforeach
+                    </select>
                 </div>
                 <div>
                     <label class="block text-sm font-semibold text-gray-700 mb-1.5">Tempat Lahir</label>
@@ -423,12 +438,9 @@
                 <div>
                     <label class="block text-sm font-semibold text-gray-700 mb-1.5">Status</label>
                     <select name="status" id="editStatus" class="w-full border border-gray-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-[#0284c7]/20 focus:border-[#0284c7] outline-none text-sm transition-all bg-white">
-                        <option value="active">Aktif</option>
-                        <option value="pindah_keluar">Pindah Keluar</option>
-                        <option value="keluar">Keluar / DO</option>
-                        <option value="graduated">Lulus</option>
-                        <option value="alumni">Alumni</option>
-                        <option value="calon_siswa">Calon Siswa</option>
+                        @foreach(\App\Models\Student::STATUSES as $key => $label)
+                            <option value="{{ $key }}">{{ $label }}</option>
+                        @endforeach
                     </select>
                 </div>
                 <div class="md:col-span-2">
@@ -511,7 +523,7 @@ async function fetchAndEditStudent(id) {
         document.getElementById('editNis').value         = d.nis || '';
         document.getElementById('editNisn').value        = d.nisn || '';
         document.getElementById('editGender').value      = d.gender || '';
-        document.getElementById('editClassName').value   = d.class_name || '';
+        document.getElementById('editKelasId').value     = d.kelas_id || '';
         document.getElementById('editBirthPlace').value  = d.birth_place || '';
         document.getElementById('editBirthDate').value   = d.birth_date || '';
         document.getElementById('editAgama').value       = d.agama || '';

@@ -56,9 +56,12 @@ class AuditLog extends Model
 
     const BILL_CREATED               = 'BILL_CREATED';
     const BILL_DELETED               = 'BILL_DELETED';
+    const BILL_CANCELLED             = 'BILL_CANCELLED';
     const PAYMENT_CONFIRMED          = 'PAYMENT_CONFIRMED';
+    const PAYMENT_RECEIVED           = 'PAYMENT_CONFIRMED'; // alias for spec compliance
     const PAYMENT_FAILED             = 'PAYMENT_FAILED';
     const BILL_UPDATED               = 'BILL_UPDATED';
+    const DISCOUNT_APPLIED           = 'DISCOUNT_APPLIED';
     const PAID_BILL_UPDATE_ATTEMPTED = 'PAID_BILL_UPDATE_ATTEMPTED';
     const PAYMENT_ATTEMPT_CREATED              = 'PAYMENT_ATTEMPT_CREATED';
     const PAYMENT_ATTEMPT_CANCELLED            = 'PAYMENT_ATTEMPT_CANCELLED';

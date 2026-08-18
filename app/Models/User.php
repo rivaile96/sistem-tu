@@ -57,6 +57,11 @@ class User extends Authenticatable
         return $this->role === 'tu';
     }
 
+    public function isStaf(): bool
+    {
+        return $this->role === 'staf';
+    }
+
     public function isKepalaSekolah(): bool
     {
         return $this->role === 'kepala_sekolah';
@@ -68,6 +73,6 @@ class User extends Authenticatable
      */
     public function canManageFinance(): bool
     {
-        return in_array($this->role, ['admin', 'tu'], true);
+        return in_array($this->role, ['admin', 'tu', 'staf'], true);
     }
 }

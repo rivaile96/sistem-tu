@@ -54,7 +54,7 @@ class NaikKelasController extends Controller
 
         // Statistik jumlah siswa aktif per kelas (untuk tabel ringkasan di view)
         $statPerKelas = $kelasAktif->map(fn($k) => (object)[
-            'class_name' => $k->nama_kelas,
+            'nama_kelas' => $k->nama_kelas,
             'jumlah'     => $k->active_students_count,
         ])->filter(fn($s) => $s->jumlah > 0)->values();
 
@@ -101,14 +101,8 @@ class NaikKelasController extends Controller
                 ->orderBy('name')
                 ->get();
 
-            // Juga ambil siswa yang class_name cocok tapi kelas_id null (backward compat)
-            $siswaLama = Student::whereNull('kelas_id')
-                ->where('class_name', $kelasAsal->nama_kelas)
-                ->whereNotIn('status', self::SKIP_STATUSES)
-                ->orderBy('name')
-                ->get();
-
-            $semuaSiswa = $siswa->merge($siswaLama);
+            // Phase 9.3: class_name column dropped — all students now have kelas_id
+            $semuaSiswa = $siswa;
 
             $preview[] = [
                 'kelas_asal'   => $kelasAsal,
@@ -163,12 +157,8 @@ class NaikKelasController extends Controller
                 // Siswa via kelas_id
                 $siswaList = Student::where('kelas_id', $kelasAsal->id)->get();
 
-                // Backward compat: siswa dengan class_name yang cocok tapi belum punya kelas_id
-                $siswaLama = Student::whereNull('kelas_id')
-                    ->where('class_name', $kelasAsal->nama_kelas)
-                    ->get();
-
-                $semuaSiswa = $siswaList->merge($siswaLama);
+                // Phase 9.3: class_name column dropped — all students use kelas_id
+                $semuaSiswa = $siswaList;
 
                 foreach ($semuaSiswa as $siswa) {
                     // Skip siswa non-aktif
@@ -203,8 +193,7 @@ class NaikKelasController extends Controller
                         if ($catatanTambahan) $catatan .= " — {$catatanTambahan}";
 
                         $siswa->update([
-                            'kelas_id'   => $kelasTujuan->id,
-                            'class_name' => $kelasTujuan->nama_kelas,
+                            'kelas_id' => $kelasTujuan->id,
                         ]);
 
                         StudentStatusLog::create([

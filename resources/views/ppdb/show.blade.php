@@ -1,4 +1,40 @@
 <x-app-layout>
+    <!-- 5.2 — Post-activation bundle prompt -->
+    @if(session('show_bundle_prompt') && $siswa->status === 'active')
+    <div class="mb-6 bg-emerald-50 border border-emerald-200 rounded-2xl px-6 py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div class="flex items-center gap-3">
+            <div class="p-2 bg-emerald-100 rounded-xl">
+                <svg class="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                </svg>
+            </div>
+            <div>
+                <p class="font-bold text-emerald-800">{{ $siswa->name }} berhasil diaktifkan!</p>
+                <p class="text-sm text-emerald-600">Apakah ingin membuat tagihan paket untuk siswa ini sekarang?</p>
+            </div>
+        </div>
+        <div class="flex items-center gap-3 shrink-0">
+            @php $bundles = \App\Models\PosBundle::where('is_active', true)->orderBy('name')->get(); @endphp
+            @if($bundles->count())
+                <div class="flex items-center gap-2">
+                    @foreach($bundles as $bundle)
+                        <a href="{{ route('pos.bundles.generateBillsForm', $bundle->id) }}?student_ids[]={{ $siswa->id }}"
+                           class="text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl font-semibold transition">
+                            {{ $bundle->name }}
+                        </a>
+                    @endforeach
+                </div>
+            @else
+                <span class="text-sm text-emerald-600 italic">Belum ada bundle aktif.</span>
+            @endif
+            <a href="{{ route('pos.bundles.index') }}"
+               class="text-xs bg-white border border-emerald-300 text-emerald-700 px-4 py-2 rounded-xl font-semibold hover:border-emerald-400 transition">
+                Lihat Semua Bundle
+            </a>
+        </div>
+    </div>
+    @endif
+
     <!-- Header Section -->
     <div class="mb-8">
         <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-2">
@@ -128,7 +164,7 @@
                     <svg class="w-4 h-4 text-[#0284c7]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
                     </svg>
-                    Keputusan Seleksi
+                    Aktivasi Siswa
                 </h2>
 
                 <form action="{{ route('ppdb.seleksi', $siswa->id) }}" method="POST"
@@ -145,8 +181,8 @@
                             <input type="radio" name="aksi" value="terima" x-model="aksi"
                                    class="w-4 h-4 text-emerald-600 focus:ring-emerald-500">
                             <div>
-                                <p class="text-sm font-semibold text-gray-800">Terima</p>
-                                <p class="text-xs text-gray-500">Siswa diterima & akan dikonversi</p>
+                                <p class="text-sm font-semibold text-gray-800">Aktifkan</p>
+                                <p class="text-xs text-gray-500">Siswa diterima &amp; langsung aktif</p>
                             </div>
                         </label>
 
@@ -213,7 +249,7 @@
                             Catatan <span class="text-gray-400 font-normal">(opsional)</span>
                         </label>
                         <textarea id="catatan" name="catatan" rows="3"
-                                  placeholder="Catatan keputusan seleksi..."
+                                  placeholder="Catatan aktivasi..."
                                   class="w-full border border-gray-200 rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-[#0284c7]/20 focus:border-[#0284c7] outline-none text-sm transition-all duration-200 resize-none">{{ old('catatan') }}</textarea>
                     </div>
 
@@ -251,7 +287,7 @@
             </h2>
         </div>
 
-        @if(isset($siswa->logs) && $siswa->logs->count() > 0)
+        @if($siswa->statusLogs->count() > 0)
         <div class="overflow-x-auto">
             <table class="w-full">
                 <thead>
@@ -263,22 +299,22 @@
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100">
-                    @foreach($siswa->logs as $log)
+                    @foreach($siswa->statusLogs as $log)
                     <tr class="hover:bg-gray-50/50 transition-colors">
                         <td class="px-6 py-3 text-sm text-gray-600 whitespace-nowrap">
                             {{ $log->created_at->format('d M Y, H:i') }}
                         </td>
                         <td class="px-6 py-3">
                             <div class="flex items-center gap-2 text-sm">
-                                <span class="text-gray-500">{{ $log->status_lama ?? '—' }}</span>
+                                <span class="text-gray-500">{{ $log->status_lama_label ?? '—' }}</span>
                                 <svg class="w-3.5 h-3.5 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
                                 </svg>
-                                <span class="font-semibold text-gray-800">{{ $log->status_baru ?? '—' }}</span>
+                                <span class="font-semibold text-gray-800">{{ $log->status_baru_label ?? '—' }}</span>
                             </div>
                         </td>
                         <td class="px-6 py-3 text-sm text-gray-600">{{ $log->catatan ?? '—' }}</td>
-                        <td class="px-6 py-3 text-sm text-gray-600">{{ $log->user->name ?? '—' }}</td>
+                        <td class="px-6 py-3 text-sm text-gray-600">{{ optional($log->diubahOleh)->name ?? '—' }}</td>
                     </tr>
                     @endforeach
                 </tbody>

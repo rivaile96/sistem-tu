@@ -18,13 +18,13 @@ class StudentFactory extends Factory
         $birthDate = $this->faker->dateTimeBetween('-20 years', '-15 years');
 
         return [
-            'nis'        => $this->faker->unique()->numerify('##########'),
-            'nisn'       => $this->faker->optional()->numerify('##########'),
-            'name'       => $this->faker->name(),
-            'gender'     => $this->faker->randomElement(['L', 'P']),
-            'class_name' => 'X IPA 1',
-            'birth_date' => $birthDate->format('Y-m-d'),
-            'status'     => 'active',
+            'nis'          => $this->faker->unique()->numerify('##########'),
+            'nisn'         => $this->faker->optional()->numerify('##########'),
+            'name'         => $this->faker->name(),
+            'gender'       => $this->faker->randomElement(['L', 'P']),
+            // class_name removed — Phase 9.3, kelas_id is canonical
+            'birth_date'   => $birthDate->format('Y-m-d'),
+            'status'       => 'active',
             'parent_phone' => $this->faker->phoneNumber(),
         ];
     }

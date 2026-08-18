@@ -63,7 +63,7 @@
                             </div>
                             <div>
                                 <p class="font-bold text-gray-900 text-lg leading-tight">{{ $student->name }}</p>
-                                <p class="text-sm text-gray-500">{{ $student->class_name }}</p>
+                                <p class="text-sm text-gray-500">{{ optional($student->kelas)->nama_kelas ?? '-' }}</p>
                             </div>
                         </div>
 
@@ -81,7 +81,7 @@
                             @endif
                             <div class="flex items-center justify-between">
                                 <span class="text-sm text-gray-500 font-medium">Kelas</span>
-                                <span class="text-sm font-bold text-gray-800">{{ $student->class_name }}</span>
+                                <span class="text-sm font-bold text-gray-800">{{ optional($student->kelas)->nama_kelas ?? '-' }}</span>
                             </div>
                             <div class="flex items-center justify-between">
                                 <span class="text-sm text-gray-500 font-medium">Status Saat Ini</span>

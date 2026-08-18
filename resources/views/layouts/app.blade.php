@@ -40,30 +40,43 @@
 
         <nav class="flex-1 overflow-y-auto custom-scroll px-3 py-6 space-y-2">
             <p class="px-3 text-[10px] font-bold text-blue-100 uppercase tracking-widest mb-2 opacity-70">Menu Utama</p>
-            
+
+            {{-- Dashboard: semua role --}}
             <a href="{{ route('dashboard') }}" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition font-medium {{ request()->routeIs('dashboard') ? 'bg-white text-[#0ea5e9] shadow-md' : 'text-blue-50 hover:bg-white/10 hover:text-white' }}">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>
                 <span>Dashboard</span>
             </a>
 
+            {{-- Manajemen Siswa: admin, tu, staf, kepala_sekolah --}}
+            @if(in_array(Auth::user()->role, ['admin','tu','staf','kepala_sekolah']))
             <a href="{{ route('students.index') }}" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition font-medium {{ request()->routeIs('students.*') || request()->routeIs('naik-kelas.*') ? 'bg-white text-[#0ea5e9] shadow-md' : 'text-blue-50 hover:bg-white/10 hover:text-white' }}">
-    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
-    <span>Manajemen Siswa</span>
-</a>
-            <a href="{{ route('kelas.index') }}" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition font-medium {{ request()->routeIs('kelas.*') ? 'bg-white text-[#0ea5e9] shadow-md' : 'text-blue-50 hover:bg-white/10 hover:text-white' }}">
-    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg>
-    <span>Master Kelas</span>
-</a>
-            <a href="{{ route('rombel.index') }}" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition font-medium {{ request()->routeIs('rombel.*') || request()->routeIs('tahun-ajaran.*') ? 'bg-white text-[#0ea5e9] shadow-md' : 'text-blue-50 hover:bg-white/10 hover:text-white' }}">
-    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-    <span>Rombel</span>
-</a>
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+                <span>Manajemen Siswa</span>
+            </a>
+            @endif
 
+            {{-- Master Kelas & Rombel: admin, tu only --}}
+            @if(in_array(Auth::user()->role, ['admin','tu']))
+            <a href="{{ route('kelas.index') }}" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition font-medium {{ request()->routeIs('kelas.*') ? 'bg-white text-[#0ea5e9] shadow-md' : 'text-blue-50 hover:bg-white/10 hover:text-white' }}">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg>
+                <span>Master Kelas</span>
+            </a>
+            <a href="{{ route('rombel.index') }}" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition font-medium {{ request()->routeIs('rombel.*') || request()->routeIs('tahun-ajaran.*') ? 'bg-white text-[#0ea5e9] shadow-md' : 'text-blue-50 hover:bg-white/10 hover:text-white' }}">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                <span>Rombel</span>
+            </a>
+            @endif
+
+            {{-- PPDB: admin, tu, staf, kepala_sekolah --}}
+            @if(in_array(Auth::user()->role, ['admin','tu','staf','kepala_sekolah']))
             <a href="{{ route('ppdb.index') }}" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition font-medium {{ request()->routeIs('ppdb.*') ? 'bg-white text-[#0ea5e9] shadow-md' : 'text-blue-50 hover:bg-white/10 hover:text-white' }}">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path></svg>
-                <span>PPDB</span>
+                <span>Registrasi Siswa Baru</span>
             </a>
+            @endif
 
+            {{-- Tagihan: admin,tu,staf,kepala_sekolah (monitoring); buat tagihan: admin,tu only --}}
+            @if(in_array(Auth::user()->role, ['admin','tu','staf','kepala_sekolah']))
             <div x-data="{ open: {{ request()->routeIs('bills.*') ? 'true' : 'false' }} }">
                 <button @click="open = !open" class="w-full flex justify-between items-center px-3 py-2.5 rounded-xl text-sm transition font-medium {{ request()->routeIs('bills.*') ? 'bg-white/10 text-white' : 'text-blue-50 hover:bg-white/10 hover:text-white' }}">
                     <div class="flex items-center gap-3">
@@ -72,20 +85,21 @@
                     </div>
                     <svg class="w-4 h-4 transition-transform duration-200" :class="{'rotate-180': open}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
                 </button>
-
                 <div x-show="open" x-cloak class="mt-1 space-y-1 bg-[#0284c7]/30 rounded-xl p-1">
-                    
                     <a href="{{ route('bills.index') }}" class="flex items-center gap-3 px-3 py-2 rounded-lg text-xs transition {{ request()->routeIs('bills.index') ? 'bg-white text-[#0ea5e9] font-bold shadow-sm' : 'text-blue-100 hover:text-white hover:bg-white/10' }}">
-                       <span>Monitoring Tagihan</span>
+                        <span>Monitoring Tagihan</span>
                     </a>
-
+                    @if(in_array(Auth::user()->role, ['admin','tu']))
                     <a href="{{ route('bills.create') }}" class="flex items-center gap-3 px-3 py-2 rounded-lg text-xs transition {{ request()->routeIs('bills.create') ? 'bg-white text-[#0ea5e9] font-bold shadow-sm' : 'text-blue-100 hover:text-white hover:bg-white/10' }}">
-                       <span>Buat Tagihan Massal</span>
+                        <span>Buat Tagihan Massal</span>
                     </a>
-                    
+                    @endif
                 </div>
             </div>
+            @endif
 
+            {{-- POS: admin,tu,staf (kasir); master barang/bundling: admin,tu; laporan: admin,tu,kepala_sekolah --}}
+            @if(in_array(Auth::user()->role, ['admin','tu','staf','kepala_sekolah']))
             <div x-data="{ open: {{ request()->routeIs('pos.*') ? 'true' : 'false' }} }">
                 <button @click="open = !open" class="w-full flex justify-between items-center px-3 py-2.5 rounded-xl text-sm transition font-medium {{ request()->routeIs('pos.*') ? 'bg-white/10 text-white' : 'text-blue-50 hover:bg-white/10 hover:text-white' }}">
                     <div class="flex items-center gap-3">
@@ -95,30 +109,33 @@
                     <svg class="w-4 h-4 transition-transform duration-200" :class="{'rotate-180': open}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
                 </button>
                 <div x-show="open" x-cloak class="mt-1 space-y-1 bg-[#0284c7]/30 rounded-xl p-1">
+                    @if(in_array(Auth::user()->role, ['admin','tu']))
                     <a href="{{ route('pos.items.index') }}" class="flex items-center gap-3 px-3 py-2 rounded-lg text-xs transition {{ request()->routeIs('pos.items.*') ? 'bg-white text-[#0ea5e9] font-bold shadow-sm' : 'text-blue-100 hover:text-white hover:bg-white/10' }}">
-                       <span>Master Barang</span>
+                        <span>Master Barang</span>
                     </a>
-                    <a href="{{ route('pos.bundles.index') }}"
-   class="flex items-center gap-3 px-3 py-2 rounded-lg text-xs transition
-   {{ request()->routeIs('pos.bundles.*') 
-        ? 'bg-white text-[#0ea5e9] font-bold shadow-sm' 
-        : 'text-blue-100 hover:text-white hover:bg-white/10' }}">
-    
-    <span>Paket Bundling</span>
-</a>
+                    <a href="{{ route('pos.bundles.index') }}" class="flex items-center gap-3 px-3 py-2 rounded-lg text-xs transition {{ request()->routeIs('pos.bundles.*') ? 'bg-white text-[#0ea5e9] font-bold shadow-sm' : 'text-blue-100 hover:text-white hover:bg-white/10' }}">
+                        <span>Paket Bundling</span>
+                    </a>
+                    @endif
+                    @if(in_array(Auth::user()->role, ['admin','tu','staf']))
                     <a href="{{ route('pos.transaction') }}" class="flex items-center gap-3 px-3 py-2 rounded-lg text-xs transition {{ request()->routeIs('pos.transaction') ? 'bg-white text-[#0ea5e9] font-bold shadow-sm' : 'text-blue-100 hover:text-white hover:bg-white/10' }}">
-                       <span>Kasir / Transaksi</span>
+                        <span>Kasir / Transaksi</span>
                     </a>
+                    @endif
+                    @if(in_array(Auth::user()->role, ['admin','tu','kepala_sekolah']))
                     <a href="{{ route('pos.history.index') }}" class="flex items-center gap-3 px-3 py-2 rounded-lg text-xs transition {{ request()->routeIs('pos.history.*') ? 'bg-white text-[#0ea5e9] font-bold shadow-sm' : 'text-blue-100 hover:text-white hover:bg-white/10' }}">
-                       <span>Riwayat Transaksi</span>
+                        <span>Riwayat Transaksi</span>
                     </a>
+                    @endif
                 </div>
             </div>
+            @endif
 
+            {{-- Konfigurasi: admin only --}}
+            @if(Auth::user()->role === 'admin')
             <p class="px-3 text-[10px] font-bold text-blue-100 uppercase tracking-widest mb-2 mt-6 opacity-70">Pengaturan</p>
-
-            <div x-data="{ open: {{ request()->routeIs('settings.*') ? 'true' : 'false' }} }">
-                <button @click="open = !open" class="w-full flex justify-between items-center px-3 py-2.5 rounded-xl text-sm transition font-medium {{ request()->routeIs('settings.*') ? 'bg-white/10 text-white' : 'text-blue-50 hover:bg-white/10 hover:text-white' }}">
+            <div x-data="{ open: {{ request()->routeIs('settings.*') || request()->routeIs('school.*') ? 'true' : 'false' }} }">
+                <button @click="open = !open" class="w-full flex justify-between items-center px-3 py-2.5 rounded-xl text-sm transition font-medium {{ request()->routeIs('settings.*') || request()->routeIs('school.*') ? 'bg-white/10 text-white' : 'text-blue-50 hover:bg-white/10 hover:text-white' }}">
                     <div class="flex items-center gap-3">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
                         <span>Konfigurasi</span>
@@ -126,39 +143,19 @@
                     <svg class="w-4 h-4 transition-transform duration-200" :class="{'rotate-180': open}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
                 </button>
                 <div x-show="open" x-cloak class="mt-1 space-y-1 bg-[#0284c7]/30 rounded-xl p-1">
-    <a href="{{ route('settings.integration') }}"
-       class="flex items-center gap-3 px-3 py-2 rounded-lg text-xs transition
-       {{ request()->routeIs('settings.integration')
-            ? 'bg-white text-[#0ea5e9] font-bold shadow-sm'
-            : 'text-blue-100 hover:text-white hover:bg-white/10' }}">
-
-        <!-- Icon Integrasi / Link -->
-        <svg class="w-4 h-4"
-             fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                  d="M13.828 10.172a4 4 0 010 5.656m-3.656-5.656a4 4 0 010 5.656M8 12h8"/>
-        </svg>
-
-        <span>Integrasi Kesiswaan</span>
-    </a>
-</div>
-                <div x-show="open" x-cloak class="mt-1 space-y-1 bg-[#0284c7]/30 rounded-xl p-1">
-    <a href="{{ route('school.settings') }}"
-       class="flex items-center gap-3 px-3 py-2 rounded-lg text-xs transition
-       {{ request()->routeIs('school.settings')
-            ? 'bg-white text-[#0ea5e9] font-bold shadow-sm'
-            : 'text-blue-100 hover:text-white hover:bg-white/10' }}">
-
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                  d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
-        </svg>
-
-        <span>Identitas Sekolah</span>
-    </a>
-</div>
+                    <a href="{{ route('settings.integration') }}" class="flex items-center gap-3 px-3 py-2 rounded-lg text-xs transition {{ request()->routeIs('settings.integration') ? 'bg-white text-[#0ea5e9] font-bold shadow-sm' : 'text-blue-100 hover:text-white hover:bg-white/10' }}">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 010 5.656m-3.656-5.656a4 4 0 010 5.656M8 12h8"/></svg>
+                        <span>Integrasi Kesiswaan</span>
+                    </a>
+                    <a href="{{ route('school.settings') }}" class="flex items-center gap-3 px-3 py-2 rounded-lg text-xs transition {{ request()->routeIs('school.settings') ? 'bg-white text-[#0ea5e9] font-bold shadow-sm' : 'text-blue-100 hover:text-white hover:bg-white/10' }}">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+                        <span>Identitas Sekolah</span>
+                    </a>
+                </div>
             </div>
+            @endif
 
+            {{-- Profile: semua role --}}
             <a href="{{ route('profile.edit') }}" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition font-medium {{ request()->routeIs('profile.*') ? 'bg-white text-[#0ea5e9] shadow-md' : 'text-blue-50 hover:bg-white/10 hover:text-white' }}">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
                 <span>Profile User</span>
@@ -187,7 +184,7 @@
 
     <div class="flex flex-col min-h-screen lg:pl-64">
         
-        <header class="h-16 flex items-center justify-between gap-3 px-4 md:px-6 bg-white border-b border-gray-200 shadow-sm sticky top-0 z-30">
+        <header class="h-16 flex items-center justify-between gap-3 px-6 md:px-8 bg-white border-b border-gray-200 shadow-sm sticky top-0 z-30">
             <div class="flex items-center gap-3 min-w-0 flex-1">
                 <button @click="sidebarOpen = true" class="lg:hidden p-2 rounded-lg text-gray-500 hover:bg-gray-100 shrink-0">
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
@@ -206,12 +203,12 @@
         </header>
 
         <main class="flex-1">
-            <div class="w-full min-h-full">
+            <div class="w-full min-h-full px-6 py-6 lg:px-8 lg:py-8">
                 {{ $slot }}
             </div>
         </main>
 
-        <footer class="py-6 text-center text-xs text-gray-400">
+        <footer class="px-6 lg:px-8 py-6 text-xs text-gray-400">
             &copy; {{ date('Y') }} Sistem Manajemen Sekolah. All rights reserved.
         </footer>
     </div>

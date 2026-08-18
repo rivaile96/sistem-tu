@@ -185,8 +185,9 @@ test('cash payment with sufficient stock decrements stock correctly', function (
     BillItem::create([
         'student_bill_id' => $bill->id,
         'pos_bundle_id'   => $bundle->id,
+        'pos_item_id'     => $posItem->id,  // Phase 8.1: required for posItem relation + stock decrement
         'item_name'       => 'Paket Seragam',
-        'quantity'        => 1,   // 1 × bundle(2) = 2 units
+        'quantity'        => 2,   // 2 units → stock 5 - 2 = 3
         'price'           => 150000,
         'subtotal'        => 150000,
     ]);
