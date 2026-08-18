@@ -41,10 +41,7 @@ class RombelController extends Controller
         }
 
         if ($request->ajax() || $request->wantsJson()) {
-            return response()->json([
-                'success' => true,
-                'message' => "Tahun ajaran {$ta->nama} berhasil dibuat.",
-            ]);
+            return response()->json(['success' => true, 'message' => "Tahun ajaran {$ta->nama} berhasil dibuat."]);
         }
 
         return redirect()->route('rombel.tahun-ajaran.index')
@@ -55,13 +52,13 @@ class RombelController extends Controller
     {
         if (request()->wantsJson()) {
             return response()->json([
-                'id'               => $tahunAjaran->id,
-                'nama'             => $tahunAjaran->nama,
-                'tanggal_mulai'    => $tahunAjaran->tanggal_mulai
+                'id'              => $tahunAjaran->id,
+                'nama'            => $tahunAjaran->nama,
+                'tanggal_mulai'   => $tahunAjaran->tanggal_mulai
                     ? \Carbon\Carbon::parse($tahunAjaran->tanggal_mulai)->format('Y-m-d') : '',
-                'tanggal_selesai'  => $tahunAjaran->tanggal_selesai
+                'tanggal_selesai' => $tahunAjaran->tanggal_selesai
                     ? \Carbon\Carbon::parse($tahunAjaran->tanggal_selesai)->format('Y-m-d') : '',
-                'is_aktif'         => $tahunAjaran->is_aktif,
+                'is_aktif'        => $tahunAjaran->is_aktif,
             ]);
         }
         return view('rombel.tahun-ajaran.edit', compact('tahunAjaran'));
@@ -83,10 +80,7 @@ class RombelController extends Controller
         }
 
         if ($request->ajax() || $request->wantsJson()) {
-            return response()->json([
-                'success' => true,
-                'message' => "Tahun ajaran {$tahunAjaran->nama} berhasil diupdate.",
-            ]);
+            return response()->json(['success' => true, 'message' => "Tahun ajaran {$tahunAjaran->nama} berhasil diupdate."]);
         }
 
         return redirect()->route('rombel.tahun-ajaran.index')
@@ -121,6 +115,7 @@ class RombelController extends Controller
         $tahunAjaranId    = $request->input('tahun_ajaran_id', $tahunAjaranAktif?->id);
         $semuaTahunAjaran = TahunAjaran::orderByDesc('is_aktif')->orderByDesc('id')->get();
 
+        // FIX: eager load kelas + tahunAjaran sekalian withCount — cegah N+1
         $rombels = Rombel::with(['kelas', 'tahunAjaran'])
             ->when($tahunAjaranId, fn($q) => $q->where('tahun_ajaran_id', $tahunAjaranId))
             ->withCount('studentRombels')
@@ -155,7 +150,6 @@ class RombelController extends Controller
             'is_aktif'        => 'boolean',
         ]);
 
-        // Cek duplikat
         $exists = Rombel::where('kelas_id', $data['kelas_id'])
             ->where('tahun_ajaran_id', $data['tahun_ajaran_id'])
             ->where('nama_rombel', $data['nama_rombel'])
@@ -165,8 +159,7 @@ class RombelController extends Controller
             if ($request->ajax() || $request->wantsJson()) {
                 return response()->json(['success' => false, 'message' => "Rombel {$data['nama_rombel']} sudah ada untuk kelas dan tahun ajaran ini."], 422);
             }
-            return back()->withInput()
-                ->with('error', "Rombel {$data['nama_rombel']} sudah ada untuk kelas dan tahun ajaran ini.");
+            return back()->withInput()->with('error', "Rombel {$data['nama_rombel']} sudah ada untuk kelas dan tahun ajaran ini.");
         }
 
         $rombel = Rombel::create($data);
@@ -181,18 +174,24 @@ class RombelController extends Controller
 
     public function show(Rombel $rombel)
     {
+        // FIX: eager load student di dalam studentRombels — cegah N+1 saat render tabel
         $rombel->load(['kelas', 'tahunAjaran', 'studentRombels.student']);
 
-        // Siswa yang belum ada di rombel mana pun di tahun ajaran ini
+        // FIX: exclude siswa yang sudah ada di rombel MANA PUN di tahun ajaran yang sama
+        // (termasuk rombel ini sendiri) — cegah duplikat siswa antar rombel
         $sudahAdaIds = StudentRombel::where('tahun_ajaran_id', $rombel->tahun_ajaran_id)
             ->pluck('student_id');
 
         $siswaBelumRombel = Student::whereNotIn('id', $sudahAdaIds)
             ->where('status', 'active')
+            ->whereNull('deleted_at')
             ->orderBy('name')
             ->get();
 
-        return view('rombel.show', compact('rombel', 'siswaBelumRombel'));
+        // Hitung jumlah siswa sekali — dipakai di view tanpa lazy load ulang
+        $jumlahSiswa = $rombel->studentRombels->count();
+
+        return view('rombel.show', compact('rombel', 'siswaBelumRombel', 'jumlahSiswa'));
     }
 
     public function edit(Rombel $rombel)
@@ -260,31 +259,55 @@ class RombelController extends Controller
             'student_ids.*' => 'exists:students,id',
         ]);
 
-        $added = 0;
+        $added   = 0;
+        $skipped = 0;
+
         foreach ($request->student_ids as $studentId) {
-            // Skip kalau sudah ada di rombel lain di tahun ajaran yang sama
             $alreadyExists = StudentRombel::where('student_id', $studentId)
                 ->where('tahun_ajaran_id', $rombel->tahun_ajaran_id)
                 ->exists();
 
             if (!$alreadyExists) {
                 StudentRombel::create([
-                    'student_id'     => $studentId,
-                    'rombel_id'      => $rombel->id,
+                    'student_id'      => $studentId,
+                    'rombel_id'       => $rombel->id,
                     'tahun_ajaran_id' => $rombel->tahun_ajaran_id,
                 ]);
                 $added++;
+            } else {
+                $skipped++;
             }
         }
 
-        return back()->with('success', "{$added} siswa berhasil ditambahkan ke rombel.");
+        $msg = "{$added} siswa berhasil ditambahkan ke rombel.";
+        if ($skipped > 0) {
+            $msg .= " {$skipped} siswa dilewati karena sudah terdaftar di rombel lain.";
+        }
+
+        if ($request->ajax() || $request->wantsJson()) {
+            return response()->json(['success' => true, 'message' => $msg, 'added' => $added, 'skipped' => $skipped]);
+        }
+
+        return back()->with('success', $msg);
     }
 
-    public function removeSiswa(Rombel $rombel, Student $student)
+    // FIX: return JSON agar view bisa pakai SweetAlert (sebelumnya hanya redirect back)
+    public function removeSiswa(Request $request, Rombel $rombel, Student $student)
     {
-        StudentRombel::where('rombel_id', $rombel->id)
+        $deleted = StudentRombel::where('rombel_id', $rombel->id)
             ->where('student_id', $student->id)
             ->delete();
+
+        if (!$deleted) {
+            if ($request->ajax() || $request->wantsJson()) {
+                return response()->json(['success' => false, 'message' => 'Siswa tidak ditemukan di rombel ini.'], 404);
+            }
+            return back()->with('error', 'Siswa tidak ditemukan di rombel ini.');
+        }
+
+        if ($request->ajax() || $request->wantsJson()) {
+            return response()->json(['success' => true, 'message' => "{$student->name} berhasil dikeluarkan dari rombel."]);
+        }
 
         return back()->with('success', "{$student->name} berhasil dikeluarkan dari rombel.");
     }

@@ -243,6 +243,87 @@
                         </button>
                     </div>
 
+                    {{-- ═══════════════════════════════════════
+                         SECTION: WARNA SIDEBAR
+                    ═══════════════════════════════════════ --}}
+                    <div class="mt-10 pt-8 border-t border-gray-100">
+                        <div class="flex items-center gap-3 mb-6">
+                            <div class="p-2 bg-purple-50 rounded-xl">
+                                <svg class="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"/>
+                                </svg>
+                            </div>
+                            <div>
+                                <h3 class="font-bold text-gray-800">Tema Warna Sidebar</h3>
+                                <p class="text-xs text-gray-500">Pilih warna sidebar & login page. Perubahan langsung terlihat setelah disimpan.</p>
+                            </div>
+                        </div>
+
+                        @php
+                            $currentColor = $settings['sidebar_color'] ?? 'blue';
+                            $colorOptions = [
+                                'blue'   => ['label' => 'Sky Blue',    'bg' => '#0ea5e9', 'dark' => '#0284c7'],
+                                'indigo' => ['label' => 'Indigo',      'bg' => '#6366f1', 'dark' => '#4f46e5'],
+                                'violet' => ['label' => 'Violet',      'bg' => '#8b5cf6', 'dark' => '#7c3aed'],
+                                'pink'   => ['label' => 'Pink',        'bg' => '#ec4899', 'dark' => '#db2777'],
+                                'rose'   => ['label' => 'Rose Red',    'bg' => '#f43f5e', 'dark' => '#e11d48'],
+                                'orange' => ['label' => 'Orange',      'bg' => '#f97316', 'dark' => '#ea580c'],
+                                'amber'  => ['label' => 'Amber',       'bg' => '#f59e0b', 'dark' => '#d97706'],
+                                'green'  => ['label' => 'Emerald',     'bg' => '#10b981', 'dark' => '#059669'],
+                                'teal'   => ['label' => 'Teal',        'bg' => '#14b8a6', 'dark' => '#0d9488'],
+                                'brown'  => ['label' => 'Brown',       'bg' => '#b45309', 'dark' => '#92400e'],
+                                'slate'  => ['label' => 'Slate Gray',  'bg' => '#64748b', 'dark' => '#475569'],
+                                'black'  => ['label' => 'Dark/Black',  'bg' => '#1e293b', 'dark' => '#0f172a'],
+                            ];
+                        @endphp
+
+                        <div class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3" id="colorGrid">
+                            @foreach($colorOptions as $key => $opt)
+                            <label class="cursor-pointer group" title="{{ $opt['label'] }}">
+                                <input type="radio" name="sidebar_color" value="{{ $key }}"
+                                       class="sr-only peer"
+                                       {{ $currentColor === $key ? 'checked' : '' }}>
+                                <div class="relative rounded-2xl overflow-hidden shadow-sm border-2 transition-all duration-200
+                                            peer-checked:border-gray-800 peer-checked:shadow-lg peer-checked:scale-105
+                                            border-transparent hover:border-gray-300 hover:scale-105"
+                                     style="background: {{ $opt['bg'] }}">
+                                    {{-- Mini preview sidebar --}}
+                                    <div class="h-16 p-2 flex flex-col gap-1" style="background: {{ $opt['bg'] }}">
+                                        <div class="h-2 rounded" style="background: {{ $opt['dark'] }}"></div>
+                                        <div class="h-1.5 rounded bg-white/30 w-3/4"></div>
+                                        <div class="h-1.5 rounded bg-white/30 w-1/2"></div>
+                                        <div class="h-1.5 rounded bg-white/50 w-2/3"></div>
+                                        <div class="h-1.5 rounded bg-white/30 w-3/4"></div>
+                                    </div>
+                                    {{-- Checkmark --}}
+                                    <div class="absolute top-1 right-1 w-4 h-4 bg-white rounded-full items-center justify-center shadow
+                                                hidden peer-checked:flex">
+                                        <svg class="w-2.5 h-2.5 text-gray-800" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/>
+                                        </svg>
+                                    </div>
+                                </div>
+                                <p class="text-center text-xs text-gray-600 mt-1.5 font-medium truncate">{{ $opt['label'] }}</p>
+                            </label>
+                            @endforeach
+                        </div>
+
+                        {{-- Live preview strip --}}
+                        <div class="mt-6 rounded-xl overflow-hidden border border-gray-200 shadow-sm">
+                            <div class="flex items-center gap-2 px-4 py-2 text-xs font-bold text-white" id="previewHeader"
+                                 style="background: {{ $colorOptions[$currentColor]['dark'] ?? '#0284c7' }}">
+                                <div class="w-3 h-3 rounded-full bg-white/30"></div>
+                                <span>Preview Sidebar</span>
+                            </div>
+                            <div class="flex gap-2 px-4 py-3" id="previewBody"
+                                 style="background: {{ $colorOptions[$currentColor]['bg'] ?? '#0ea5e9' }}">
+                                <div class="h-2 rounded bg-white w-1/4"></div>
+                                <div class="h-2 rounded bg-white/40 w-1/3"></div>
+                                <div class="h-2 rounded bg-white/40 w-1/5"></div>
+                            </div>
+                        </div>
+                    </div>
+
                 </form>
             </div>
 
@@ -254,6 +335,31 @@
             </div>
         </div>
     </div>
+
+    <script>
+        const colorMap = {
+            blue:   { bg: '#0ea5e9', dark: '#0284c7' },
+            indigo: { bg: '#6366f1', dark: '#4f46e5' },
+            violet: { bg: '#8b5cf6', dark: '#7c3aed' },
+            pink:   { bg: '#ec4899', dark: '#db2777' },
+            rose:   { bg: '#f43f5e', dark: '#e11d48' },
+            orange: { bg: '#f97316', dark: '#ea580c' },
+            amber:  { bg: '#f59e0b', dark: '#d97706' },
+            green:  { bg: '#10b981', dark: '#059669' },
+            teal:   { bg: '#14b8a6', dark: '#0d9488' },
+            brown:  { bg: '#b45309', dark: '#92400e' },
+            slate:  { bg: '#64748b', dark: '#475569' },
+            black:  { bg: '#1e293b', dark: '#0f172a' },
+        };
+        document.querySelectorAll('input[name="sidebar_color"]').forEach(radio => {
+            radio.addEventListener('change', function () {
+                const p = colorMap[this.value];
+                if (!p) return;
+                document.getElementById('previewHeader').style.background = p.dark;
+                document.getElementById('previewBody').style.background   = p.bg;
+            });
+        });
+    </script>
 
     <style>
         @keyframes fade-in {

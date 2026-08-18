@@ -36,8 +36,14 @@ class SchoolSettingController extends Controller
             'school_name', 'school_address', 'school_phone',
             'school_email', 'school_website', 'principal_name',
             'treasurer_name', 'school_npsn', 'school_nss',
-            'jenjang', 'accreditation',
+            'jenjang', 'accreditation', 'sidebar_color',
         ];
+
+        // Validasi sidebar_color — hanya terima nilai yang dikenal
+        $validColors = ['blue','indigo','violet','pink','rose','orange','amber','green','teal','brown','slate','black'];
+        if ($request->filled('sidebar_color') && !in_array($request->sidebar_color, $validColors)) {
+            return back()->with('error', 'Warna sidebar tidak valid.')->withInput();
+        }
 
         $data = $request->only($allowedKeys);
 
