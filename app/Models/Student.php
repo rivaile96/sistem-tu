@@ -12,15 +12,22 @@ class Student extends Model
     use HasApiTokens, HasFactory, Notifiable;
 
     // Nama tabel di database
-    protected $table = 'students';
+    // NIS-identity: tabel ini adalah student_profiles di production PostgreSQL.
+    // Nama tabel 'students' adalah alias lama — production tidak memiliki tabel 'students'.
+    protected $table = 'student_profiles';
 
     // Kolom yang aman diisi massal (semua kecuali ID)
     protected $guarded = ['id'];
 
     // Casting tipe data otomatis
     protected $casts = [
-        'created_at' => 'datetime',
-        'updated_at' => 'datetime',
+        'created_at'  => 'datetime',
+        'updated_at'  => 'datetime',
+        'synced_at'   => 'datetime',
+        // enrolled_at: tanggal resmi enrollment, bukan created_at/synced_at.
+        // NULL = provisioned tapi belum official enrolled.
+        // Finance HARUS cek null sebelum menggunakan.
+        'enrolled_at' => 'datetime',
     ];
 
     // ==========================================
@@ -42,6 +49,60 @@ class Student extends Model
     public function posOrders()
     {
         return $this->hasMany(PosOrder::class, 'student_id')->latest();
+    }
+
+    /**
+     * Relasi ke User TU (login account)
+     * student_profiles.user_id → users.id
+     */
+    public function user()
+    {
+        return $this->belongsTo(\App\Models\User::class, 'user_id', 'id');
+    }
+
+    /**
+     * Accessor: $student->name → ambil dari users.name
+     * student_profiles tidak punya kolom name — nama disimpan di tabel users.
+     */
+    public function getNameAttribute(): ?string
+    {
+        return $this->user?->name;
+    }
+
+    /**
+     * Apakah siswa sudah official enrolled?
+     *
+     * Finance WAJIB menggunakan method ini — jangan cek enrolled_at langsung
+     * agar business rule tidak tersebar di seluruh codebase.
+     *
+     * NULL enrolled_at = provisioned tapi belum resmi enrolled.
+     * Finance harus skip atau handle secara eksplisit.
+     */
+    public function isEnrolled(): bool
+    {
+        return $this->enrolled_at !== null;
+    }
+
+    /**
+     * Apakah siswa baru untuk periode billing tertentu?
+     *
+     * Siswa dianggap "baru" jika enrolled_at jatuh dalam bulan/tahun yang sama
+     * dengan billing period yang ditanyakan.
+     *
+     * Finance billing engine akan menggunakan ini bersama new_student_start_offset
+     * dari FinanceSppRule untuk menentukan kapan billing dimulai.
+     *
+     * @param int $billingMonth 1-12
+     * @param int $billingYear  contoh: 2026
+     */
+    public function isNewStudentForPeriod(int $billingMonth, int $billingYear): bool
+    {
+        if (!$this->isEnrolled()) {
+            return false; // belum enrolled = tidak bisa diklasifikasikan
+        }
+
+        return $this->enrolled_at->year === $billingYear
+            && $this->enrolled_at->month === $billingMonth;
     }
 
     // ==========================================

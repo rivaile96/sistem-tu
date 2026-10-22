@@ -13,9 +13,9 @@ return new class extends Migration
             if (!Schema::hasColumn('pos_orders', 'student_id')) {
                 $table->foreignId('student_id')
                       ->nullable()
-                      ->after('user_id') // Taruh setelah user_id (kasir)
-                      ->constrained('students')
-                      ->nullOnDelete(); // Kalau siswa dihapus, history transaksi tetap ada (tapi null)
+                      ->after('user_id')
+                      ->constrained('student_profiles')
+                      ->nullOnDelete();
             }
         });
     }

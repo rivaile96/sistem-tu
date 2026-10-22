@@ -8,14 +8,19 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // 1. Tabel Siswa
-        Schema::create('students', function (Blueprint $table) {
-            $table->id();
-            $table->string('nis')->unique();
-            $table->string('name');
-            $table->string('class_name');
-            $table->timestamps();
-        });
+        // 1. Tabel Siswa (LEGACY — tidak dipakai di production)
+        // Production menggunakan 'student_profiles' (migration 0001_01_01_000002).
+        // Migration ini dipertahankan untuk referensi historis.
+        // Guard: skip jika 'students' sudah ada.
+        if (!Schema::hasTable('students')) {
+            Schema::create('students', function (Blueprint $table) {
+                $table->id();
+                $table->string('nis')->unique();
+                $table->string('name');
+                $table->string('class_name');
+                $table->timestamps();
+            });
+        }
 
         // 2. Tabel Barang (POS)
         Schema::create('pos_items', function (Blueprint $table) {
@@ -29,9 +34,12 @@ return new class extends Migration
         });
 
         // 3. Tabel Tagihan SPP
+        // student_id references student_profiles (skema baru) bukan students (legacy).
+        // Gunakan unsignedBigInteger tanpa constrained() agar kompatibel SQLite test
+        // dan tidak bergantung pada keberadaan tabel 'students' yang sudah tidak dipakai.
         Schema::create('spp_bills', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('student_id')->constrained('students');
+            $table->unsignedBigInteger('student_id')->index();
             $table->string('month');
             $table->integer('amount');
             $table->enum('status', ['LUNAS', 'BELUM', 'PENDING'])->default('BELUM');

@@ -28,6 +28,36 @@
                             <span class="text-gray-500">No. HP Ortu</span>
                             <span class="font-medium">{{ $student->parent_phone ?? '-' }}</span>
                         </div>
+                        <div class="flex justify-between items-start">
+                            <span class="text-gray-500">Enrollment Date</span>
+                            <span class="font-medium text-right">
+                                @if($student->enrolled_at)
+                                    <span class="text-green-700">{{ $student->enrolled_at->format('d M Y') }}</span>
+                                @else
+                                    <span class="text-amber-600 text-xs">Belum enrolled</span>
+                                @endif
+                            </span>
+                        </div>
+                        @auth
+                            @if(auth()->user()->role === 'admin')
+                            <div class="pt-2 border-t border-gray-100">
+                                <form method="POST" action="{{ route('students.enrolled-at.update', $student->id) }}">
+                                    @csrf
+                                    <label class="block text-xs text-gray-500 mb-1">Set Enrollment Date (admin)</label>
+                                    <div class="flex gap-2">
+                                        <input type="date" name="enrolled_at"
+                                               value="{{ $student->enrolled_at ? $student->enrolled_at->format('Y-m-d') : '' }}"
+                                               class="flex-1 border rounded-lg px-2 py-1 text-xs focus:ring-2 focus:ring-sky-500 focus:outline-none">
+                                        <button type="submit"
+                                                class="bg-sky-600 hover:bg-sky-700 text-white text-xs px-3 py-1 rounded-lg">
+                                            Simpan
+                                        </button>
+                                    </div>
+                                    <p class="text-xs text-gray-400 mt-1">Hanya isi jika ada konfirmasi resmi enrollment. Jangan isi dengan tanggal created_at.</p>
+                                </form>
+                            </div>
+                            @endif
+                        @endauth
                     </div>
                 </div>
 

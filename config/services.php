@@ -48,4 +48,17 @@ return [
         'is_3ds'         => env('MIDTRANS_IS_3DS', true),
     ],
 
+    // TU Sync — service-to-service auth dari Kaffah Backend.
+    // Secret harus sama dengan TU_SYNC_SECRET di kaffah-backend/.env.
+    // Fail-closed: jika kosong, semua request ke /api/internal/sync-student ditolak.
+    'tu_sync' => [
+        'secret' => env('TU_SYNC_SECRET'),
+    ],
+
+    // Kaffah Backend — untuk TU read student data
+    'kaffah' => [
+        'url'        => env('KAFFAH_CORE_URL', 'http://localhost:8000'),
+        'api_secret' => env('KAFFAH_API_SECRET'),
+    ],
+
 ];

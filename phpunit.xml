@@ -28,6 +28,10 @@
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>
+        <env name="TU_SYNC_SECRET" value="TuSyncSecretKey2026!"/>
+        <!-- Kaffah integration — test values, bukan production secret -->
+        <env name="KAFFAH_CORE_URL" value="http://localhost:8000"/>
+        <env name="KAFFAH_API_SECRET" value="test-secret-key"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>

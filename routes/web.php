@@ -15,7 +15,9 @@ use App\Http\Controllers\PosTransactionController; // Kasir
 use App\Http\Controllers\PosReportController;      // Laporan POS
 use App\Http\Controllers\IntegrationController;    // Integrasi PPDB
 use App\Http\Controllers\SppController;            // (Legacy) SPP Lama
-use App\Http\Controllers\SchoolSettingController;  // Pengaturan Sekolah
+use App\Http\Controllers\SchoolSettingController;    // Pengaturan Sekolah
+use App\Http\Controllers\SppGenerationController;    // SPP Billing Engine
+use App\Http\Controllers\FinanceSettingController; // Konfigurasi Finance Admin
 
 /*
 |--------------------------------------------------------------------------
@@ -52,6 +54,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::prefix('students')->name('students.')->group(function () {
         Route::get('/', [StudentController::class, 'index'])->name('index');
         Route::get('/{id}/finance', [StudentController::class, 'show'])->name('show');
+        // Admin-only: set official enrollment date
+        Route::post('/{id}/enrolled-at', [StudentController::class, 'updateEnrolledAt'])
+             ->middleware('role:admin')
+             ->name('enrolled-at.update');
     });
 
     // 3. BILLING / TAGIHAN (SYSTEM BARU)
@@ -104,7 +110,38 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/school-settings', 'update')->name('school.update'); // Proses Simpan
     });
 
-    // 7. LEGACY SPP (Sistem Lama - Opsional)
+    // 7. FINANCE SETTINGS — Admin konfigurasi jenis tagihan dan aturan SPP
+    // Semua route di sini wajib role:admin
+    Route::prefix('finance/settings')
+        ->name('finance.settings.')
+        ->middleware('role:admin')
+        ->controller(FinanceSettingController::class)
+        ->group(function () {
+            Route::get('/', 'index')->name('index');
+
+            // Billing Types
+            Route::post('/billing-types',           'storeBillingType')->name('billing-types.store');
+            Route::put('/billing-types/{id}',       'updateBillingType')->name('billing-types.update');
+            Route::post('/billing-types/{id}/toggle','toggleBillingType')->name('billing-types.toggle');
+
+            // SPP Rules
+            Route::post('/spp-rules',           'storeSppRule')->name('spp-rules.store');
+            Route::put('/spp-rules/{id}',       'updateSppRule')->name('spp-rules.update');
+            Route::post('/spp-rules/{id}/toggle','toggleSppRule')->name('spp-rules.toggle');
+        });
+
+    // 9. SPP BILLING ENGINE — Generate tagihan SPP bulanan
+    Route::prefix('finance/spp/generate')
+        ->name('finance.spp.generate.')
+        ->middleware('role:admin')
+        ->controller(SppGenerationController::class)
+        ->group(function () {
+            Route::get('/',         'index')->name('index');
+            Route::post('/preview', 'preview')->name('preview');
+            Route::post('/confirm', 'confirm')->name('confirm');
+        });
+
+    // 10. LEGACY SPP (Sistem Lama - Opsional)
     Route::prefix('spp')->name('spp.')->group(function () {
         Route::get('/', [SppController::class, 'index'])->name('index');
         Route::get('/generate', [SppController::class, 'createGenerate'])->name('create_generate');

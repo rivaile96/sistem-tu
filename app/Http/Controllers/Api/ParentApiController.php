@@ -110,14 +110,16 @@ class ParentApiController extends Controller
         $grandTotal = $allBills->sum('amount');
 
         return response()->json([
+            'status'       => 'success',
             'student_name' => $student->name,
             'nis'          => $student->nis,
             'class_name'   => $student->class_name,
             
             // Ringkasan Header Dashboard
             'summary' => [
-                'total_tagihan' => $grandTotal, // Angka Besar di HP
-                'count'         => $allBills->count() // Badge notifikasi
+                'total_tagihan'    => $grandTotal,
+                'dashboard_amount' => $grandTotal,
+                'count'            => $allBills->count()
             ],
 
             // List untuk RecyclerView Android
@@ -207,14 +209,20 @@ class ParentApiController extends Controller
         try {
             // Minta Token ke Midtrans
             $snapToken = Snap::getSnapToken($params);
-            
-            // Simpan token ke database (Opsional, sekedar log)
-            // if ($request->type == 'POS' && isset($pos)) $pos->update(['payment_token' => $snapToken]);
-            // if (($request->type == 'BILL' || $request->type == 'SPP') && isset($bill)) $bill->update(['payment_token' => $snapToken]);
+
+            // Simpan order_id ke bill — webhook handler mencari bill via midtrans_order_id.
+            // amount diambil server-side dari bill, tidak dipercaya dari frontend.
+            if (isset($bill)) {
+                $bill->update([
+                    'midtrans_order_id' => $orderId,
+                    'payment_token'     => $snapToken,
+                    'status'            => 'PENDING',
+                ]);
+            }
 
             return response()->json([
-                'snap_token' => $snapToken, 
-                'order_id' => $orderId
+                'snap_token' => $snapToken,
+                'order_id'   => $orderId,
             ]);
 
         } catch (\Exception $e) {
@@ -281,5 +289,40 @@ class ParentApiController extends Controller
 
         // Selalu return OK 200 ke Midtrans
         return response()->json(['status' => 'ok']);
+    }
+
+    /**
+     * GET /api/finance/bills
+     * Kembalikan semua tagihan UNPAID milik student yang sedang login.
+     */
+    public function getBills(Request $request)
+    {
+        $user    = $request->user();
+        $student = \App\Models\Student::where('user_id', $user->id)->first();
+
+        // Guard: user tanpa student profile tidak boleh akses finance bills
+        if (!$student) {
+            return response()->json(['message' => 'Akses ditolak: profil siswa tidak ditemukan.'], 403);
+        }
+
+        $bills = StudentBill::where('student_id', $student->id)
+            ->where('status', 'UNPAID')
+            ->latest()
+            ->get()
+            ->map(function ($bill) {
+                return [
+                    'id'     => $bill->id,
+                    'type'   => $bill->type,
+                    'name'   => $bill->name,
+                    'amount' => $bill->amount,
+                    'status' => $bill->status,
+                    'date'   => $bill->created_at->format('d M Y'),
+                ];
+            });
+
+        return response()->json([
+            'status' => 'success',
+            'data'   => $bills,
+        ]);
     }
 }

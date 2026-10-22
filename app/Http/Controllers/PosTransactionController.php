@@ -44,7 +44,7 @@ class PosTransactionController extends Controller
             'cart.*.qty' => 'required|integer|min:1',
             'payment_amount' => 'required|numeric',
             'total_amount' => 'required|numeric',
-            'student_id' => 'nullable|exists:students,id', // <--- Validasi ID Siswa
+            'student_id' => 'nullable|exists:student_profiles,id', // NIS-identity: student_profiles adalah tabel siswa aktif
         ]);
 
         try {

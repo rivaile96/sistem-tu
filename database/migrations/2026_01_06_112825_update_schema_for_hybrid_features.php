@@ -23,14 +23,17 @@ return new class extends Migration
         });
 
         // 2. Update Students: Link ke Orang Tua (User)
-        Schema::table('students', function (Blueprint $table) {
-            if (!Schema::hasColumn('students', 'user_id')) {
-                $table->foreignId('user_id')->nullable()->after('id')->constrained('users')->onDelete('set null');
-            }
-            if (!Schema::hasColumn('students', 'parent_phone')) {
-                $table->string('parent_phone')->nullable()->after('class_name');
-            }
-        });
+        // Guard: skip jika tabel 'students' tidak ada (skema baru pakai 'student_profiles').
+        if (Schema::hasTable('students')) {
+            Schema::table('students', function (Blueprint $table) {
+                if (!Schema::hasColumn('students', 'user_id')) {
+                    $table->foreignId('user_id')->nullable()->after('id')->constrained('users')->onDelete('set null');
+                }
+                if (!Schema::hasColumn('students', 'parent_phone')) {
+                    $table->string('parent_phone')->nullable()->after('class_name');
+                }
+            });
+        }
 
         // 3. Update SPP Bills: Kolom Midtrans & Konfirmasi Manual
         Schema::table('spp_bills', function (Blueprint $table) {
@@ -69,7 +72,7 @@ return new class extends Migration
         if (!Schema::hasTable('audit_logs')) {
             Schema::create('audit_logs', function (Blueprint $table) {
                 $table->id();
-                $table->foreignId('user_id')->constrained()->onDelete('cascade'); // Siapa pelakunya
+                $table->foreignId('user_id')->nullable()->constrained()->onDelete('set null'); // NULL = sistem/integrasi, non-null = admin TU
                 $table->string('action'); // CREATE, UPDATE, DELETE, LOGIN
                 $table->string('module'); // SPP, POS, STUDENT
                 $table->text('description')->nullable(); // Detail perubahan (JSON atau text)
@@ -84,27 +87,52 @@ return new class extends Migration
     public function down(): void
     {
         Schema::dropIfExists('audit_logs');
-        
+
         Schema::table('pos_orders', function (Blueprint $table) {
-            $table->dropColumn(['payment_status', 'redemption_status', 'midtrans_order_id', 'snap_token']);
+            $cols = [];
+            if (Schema::hasColumn('pos_orders', 'payment_status'))    $cols[] = 'payment_status';
+            if (Schema::hasColumn('pos_orders', 'redemption_status')) $cols[] = 'redemption_status';
+            if (Schema::hasColumn('pos_orders', 'midtrans_order_id')) $cols[] = 'midtrans_order_id';
+            if (Schema::hasColumn('pos_orders', 'snap_token'))        $cols[] = 'snap_token';
+            if (!empty($cols)) $table->dropColumn($cols);
         });
 
         Schema::table('pos_items', function (Blueprint $table) {
-            $table->dropColumn(['code', 'image']);
+            $cols = [];
+            if (Schema::hasColumn('pos_items', 'code')) {
+                $table->dropUnique('pos_items_code_unique');
+                $table->dropColumn('code');
+            }
+            if (Schema::hasColumn('pos_items', 'image')) $table->dropColumn('image');
         });
 
         Schema::table('spp_bills', function (Blueprint $table) {
-            $table->dropForeign(['confirmed_by']);
-            $table->dropColumn(['midtrans_order_id', 'snap_token', 'confirmed_by']);
+            if (Schema::hasColumn('spp_bills', 'confirmed_by'))      $table->dropForeign(['confirmed_by']);
+            if (Schema::hasColumn('spp_bills', 'midtrans_order_id')) $table->dropUnique('spp_bills_midtrans_order_id_unique');
+            $cols = [];
+            if (Schema::hasColumn('spp_bills', 'midtrans_order_id')) $cols[] = 'midtrans_order_id';
+            if (Schema::hasColumn('spp_bills', 'snap_token'))        $cols[] = 'snap_token';
+            if (Schema::hasColumn('spp_bills', 'confirmed_by'))      $cols[] = 'confirmed_by';
+            if (!empty($cols)) $table->dropColumn($cols);
         });
 
-        Schema::table('students', function (Blueprint $table) {
-            $table->dropForeign(['user_id']);
-            $table->dropColumn(['user_id', 'parent_phone']);
-        });
+        if (Schema::hasTable('students')) {
+            Schema::table('students', function (Blueprint $table) {
+                if (Schema::hasColumn('students', 'user_id')) {
+                    $table->dropForeign(['user_id']);
+                    $table->dropColumn('user_id');
+                }
+                if (Schema::hasColumn('students', 'parent_phone')) {
+                    $table->dropColumn('parent_phone');
+                }
+            });
+        }
 
         Schema::table('users', function (Blueprint $table) {
-            $table->dropColumn(['role', 'phone']);
+            $cols = [];
+            if (Schema::hasColumn('users', 'role'))  $cols[] = 'role';
+            if (Schema::hasColumn('users', 'phone')) $cols[] = 'phone';
+            if (!empty($cols)) $table->dropColumn($cols);
         });
     }
 };

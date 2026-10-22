@@ -21,9 +21,10 @@ class PosReportController extends Controller
         // Tambahkan jam biar mencakup 00:00 - 23:59
         $query->whereBetween('created_at', ["$startDate 00:00:00", "$endDate 23:59:59"]);
 
-        // 3. Filter Status (Lunas / Hutang)
-        if ($request->has('status') && $request->status != '') {
-            $query->where('payment_status', $request->status);
+        // 3. Filter Status — support both ?status= and ?payment_status= params
+        $statusFilter = $request->payment_status ?? $request->status ?? null;
+        if (!empty($statusFilter)) {
+            $query->where('payment_status', $statusFilter);
         }
 
         // 4. Hitung Ringkasan (Summary Cards)
@@ -61,10 +62,10 @@ class PosReportController extends Controller
 
             // Update Status jadi LUNAS
             $transaction->update([
-                'payment_status' => 'PAID',
-                'payment_amount' => $transaction->total_amount, // Anggap dibayar pas
-                'change_amount' => 0,
-                // Opsional: Catat tanggal pelunasan/updated_at akan berubah otomatis
+                'payment_status'    => 'PAID',
+                'redemption_status' => 'COMPLETED', // Pelunasan hutang = barang sudah diambil
+                'payment_amount'    => $transaction->total_amount,
+                'change_amount'     => 0,
             ]);
 
             DB::commit();

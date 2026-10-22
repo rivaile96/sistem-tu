@@ -11,7 +11,7 @@ return new class extends Migration
         Schema::create('student_bills', function (Blueprint $table) {
             $table->id();
             // Relasi ke Siswa
-            $table->foreignId('student_id')->constrained('students')->onDelete('cascade');
+            $table->foreignId('student_id')->constrained('student_profiles')->onDelete('cascade');
             
             // Jenis Tagihan: SPP, GEDUNG, SERAGAM, KEGIATAN, DLL
             $table->string('type')->index(); 
