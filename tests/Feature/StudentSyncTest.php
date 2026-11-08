@@ -35,7 +35,7 @@ class StudentSyncTest extends TestCase
         ], $overrides);
     }
 
-    private function postSync(array $payload, string $key = null): \Illuminate\Testing\TestResponse
+    private function postSync(array $payload, ?string $key = null): \Illuminate\Testing\TestResponse
     {
         return $this->postJson('/api/internal/sync-student', $payload, [
             'X-TU-SYNC-KEY' => $key ?? $this->syncKey(),

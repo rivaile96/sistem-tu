@@ -36,7 +36,7 @@ class TuEnrollmentEndpointTest extends TestCase
         ], array_diff_key($overrides, ['name' => ''])));
     }
 
-    private function postEnrollment(array $payload, string $key = null): \Illuminate\Testing\TestResponse
+    private function postEnrollment(array $payload, ?string $key = null): \Illuminate\Testing\TestResponse
     {
         return $this->withHeaders([
             'X-TU-SYNC-KEY' => $key ?? $this->syncKey,
