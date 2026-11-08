@@ -314,4 +314,95 @@ class TuPaymentIntegrationTest extends TestCase
         $this->assertEquals('PAID', $sarifBill->fresh()->status);
         $this->assertEquals('500000.00', $sarifBill->fresh()->paid_amount);
     }
+
+    // ================================================================
+    // SEC-05 FOLLOW-UP: Explicit URL & Secret Validation in PushPaymentToKaffahJob
+    // ================================================================
+
+    public function test_sec05_empty_or_invalid_base_url_sends_no_http_request(): void
+    {
+        Http::fake();
+        $student = $this->makeStudent();
+        $bill    = $this->makeBill($student);
+        $event   = $this->makeEvent($student, $bill);
+
+        foreach ([null, '', '   ', 'not-a-valid-url', 'ftp://localhost:8000', '/api/internal'] as $invalidUrl) {
+            config([
+                'services.kaffah.url'        => $invalidUrl,
+                'services.kaffah.api_secret' => 'valid-secret-key',
+            ]);
+
+            $job = PushPaymentToKaffahJob::fromEvent($event, 'SPP');
+            $job->handle();
+        }
+
+        Http::assertNothingSent();
+    }
+
+    public function test_sec05_empty_secret_sends_no_http_request(): void
+    {
+        Http::fake();
+        $student = $this->makeStudent();
+        $bill    = $this->makeBill($student);
+        $event   = $this->makeEvent($student, $bill);
+
+        foreach ([null, '', '   '] as $emptySecret) {
+            config([
+                'services.kaffah.url'        => 'http://localhost:8000',
+                'services.kaffah.api_secret' => $emptySecret,
+            ]);
+
+            $job = PushPaymentToKaffahJob::fromEvent($event, 'SPP');
+            $job->handle();
+        }
+
+        Http::assertNothingSent();
+    }
+
+    public function test_sec05_response_401_and_403_fail_permanently_without_retry_exception(): void
+    {
+        $student = $this->makeStudent();
+        $bill    = $this->makeBill($student);
+        $event   = $this->makeEvent($student, $bill);
+
+        config([
+            'services.kaffah.url'        => 'http://localhost:8000/',
+            'services.kaffah.api_secret' => 'wrong-or-forbidden-secret',
+        ]);
+
+        Http::fake([
+            'http://localhost:8000/api/internal/finance/payment-received' => Http::sequence()
+                ->push(['success' => false, 'message' => 'Unauthorized'], 401)
+                ->push(['success' => false, 'message' => 'Forbidden'], 403),
+        ]);
+
+        foreach ([401, 403] as $statusCode) {
+            $job = PushPaymentToKaffahJob::fromEvent($event, 'SPP');
+            $job->handle();
+        }
+
+        Http::assertSentCount(2);
+    }
+
+    public function test_sec05_connection_timeout_propagates_for_retry(): void
+    {
+        config([
+            'services.kaffah.url'        => 'http://localhost:8000',
+            'services.kaffah.api_secret' => 'test-secret-key',
+        ]);
+
+        Http::fake([
+            'http://localhost:8000/api/internal/finance/payment-received' => function () {
+                throw new \Illuminate\Http\Client\ConnectionException('Connection timed out');
+            },
+        ]);
+
+        $this->expectException(\Illuminate\Http\Client\ConnectionException::class);
+
+        $student = $this->makeStudent();
+        $bill    = $this->makeBill($student);
+        $event   = $this->makeEvent($student, $bill);
+        $job     = PushPaymentToKaffahJob::fromEvent($event, 'SPP');
+        $job->handle();
+    }
 }

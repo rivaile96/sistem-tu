@@ -69,16 +69,31 @@ class PushPaymentToKaffahJob implements ShouldQueue
 
     public function handle(): void
     {
-        $url    = rtrim(config('services.kaffah.url', ''), '/') . '/api/internal/finance/payment-received';
-        $secret = config('services.kaffah.api_secret');
+        $rawUrl    = config('services.kaffah.url');
+        $rawSecret = config('services.kaffah.api_secret');
+        $baseUrl   = is_string($rawUrl) ? rtrim(trim($rawUrl), '/') : '';
+        $secret    = is_string($rawSecret) ? trim($rawSecret) : '';
 
-        if (empty($url) || empty($secret)) {
-            Log::error('PushPaymentToKaffahJob: konfigurasi Kaffah tidak lengkap', [
-                'order_id' => $this->orderId,
+        $scheme     = strtolower((string) parse_url($baseUrl, PHP_URL_SCHEME));
+        $host       = parse_url($baseUrl, PHP_URL_HOST);
+        $isValidUrl = $baseUrl !== ''
+            && filter_var($baseUrl, FILTER_VALIDATE_URL) !== false
+            && in_array($scheme, ['http', 'https'], true)
+            && !empty($host);
+
+        if (!$isValidUrl || $secret === '') {
+            Log::error('PushPaymentToKaffahJob: konfigurasi Kaffah tidak lengkap atau URL tidak valid', [
+                'order_id'      => $this->orderId,
+                'nis'           => $this->nis,
+                'bill_id'       => $this->billId,
+                'has_valid_url' => $isValidUrl,
+                'has_secret'    => $secret !== '',
             ]);
-            $this->fail(new \RuntimeException('Kaffah URL/secret tidak dikonfigurasi.'));
+            $this->fail(new \RuntimeException('Kaffah URL/secret tidak dikonfigurasi atau URL tidak valid.'));
             return;
         }
+
+        $url = $baseUrl . '/api/internal/finance/payment-received';
 
         $payload = [
             'event'          => 'payment.received',

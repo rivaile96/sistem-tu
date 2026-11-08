@@ -55,9 +55,10 @@ return [
         'secret' => env('TU_SYNC_SECRET'),
     ],
 
-    // Kaffah Backend — untuk TU read student data
+    // Kaffah Backend — internal service integration (TU -> Central).
+    // SEC-05: Tanpa fallback URL tebakan. Wajib dikonfigurasi eksplisit via KAFFAH_CORE_URL.
     'kaffah' => [
-        'url'        => env('KAFFAH_CORE_URL', 'http://localhost:8000'),
+        'url'        => env('KAFFAH_CORE_URL'),
         'api_secret' => env('KAFFAH_API_SECRET'),
     ],
 
