@@ -42,6 +42,12 @@ class User extends Authenticatable
     {
         return $this->hasMany(Student::class, 'user_id');
     }
+
+    // RELASI: User (Siswa) punya satu Student Profile
+    public function studentProfile()
+    {
+        return $this->hasOne(Student::class, 'user_id');
+    }
     
     // Helper untuk cek role lebih mudah: $user->hasRole('admin')
     public function hasRole($role)

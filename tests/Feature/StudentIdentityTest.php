@@ -342,4 +342,179 @@ class StudentIdentityTest extends TestCase
         $this->assertIsArray($bills);
         $this->assertEmpty($bills);
     }
+
+    // ================================================================
+    // TEST 11 (TU-01): getHomeData menggunakan student_profiles.id,
+    // BUKAN users.id ketika users.id != student_profiles.id
+    // ================================================================
+
+    public function test_home_data_uses_student_profile_id_when_user_id_differs(): void
+    {
+        // Buat 2 akun staff/admin terlebih dahulu agar users.id bergeser dari student_profiles.id
+        User::create([
+            'name'     => 'Admin 1',
+            'username' => 'admin1',
+            'email'    => 'admin1@test.id',
+            'password' => Hash::make('secret'),
+            'role'     => 'admin',
+        ]);
+        User::create([
+            'name'     => 'Admin 2',
+            'username' => 'admin2',
+            'email'    => 'admin2@test.id',
+            'password' => Hash::make('secret'),
+            'role'     => 'tu',
+        ]);
+
+        // Siswa Pertama: users.id = 3, tetapi student_profiles.id = 1
+        [
+            'user'    => $userA,
+            'profile' => $profileA,
+            'token'   => $tokenA,
+        ] = $this->makeStudentWithToken([
+            'nis'        => '26080301',
+            'nisn'       => '3000000001',
+            'name'       => 'Siswa Offset A',
+            'class_name' => '9A',
+        ]);
+
+        // Buat Siswa Kedua & Ketiga sehingga ada student_profiles dengan id == $userA->id (id = 3)
+        $this->makeStudentWithToken([
+            'nis'   => '26080302',
+            'nisn'  => '3000000002',
+            'name'  => 'Siswa Offset B',
+            'email' => '26080302',
+        ]);
+        ['profile' => $profileCollision] = $this->makeStudentWithToken([
+            'nis'   => '26080303',
+            'nisn'  => '3000000003',
+            'name'  => 'Siswa Collision ID',
+            'email' => '26080303',
+        ]);
+
+        $this->assertNotSame($userA->id, $profileA->id, 'Precondition: users.id harus berbeda dari student_profiles.id');
+        $this->assertSame($userA->id, $profileCollision->id, 'Precondition: profileCollision->id sengaja sama dengan userA->id');
+
+        // Tagihan milik Siswa A (student_id = profileA->id = 1)
+        StudentBill::create([
+            'student_id'  => $profileA->id,
+            'type'        => 'SPP',
+            'name'        => 'SPP Milik Siswa A',
+            'amount'      => 450000,
+            'status'      => 'UNPAID',
+            'paid_amount' => 0,
+        ]);
+
+        // Tagihan milik Siswa Collision (student_id = profileCollision->id == userA->id = 3)
+        StudentBill::create([
+            'student_id'  => $profileCollision->id,
+            'type'        => 'SPP',
+            'name'        => 'SPP BOCOR Milik Siswa Collision',
+            'amount'      => 999000,
+            'status'      => 'UNPAID',
+            'paid_amount' => 0,
+        ]);
+
+        $response = $this->withHeaders($this->authHeader($tokenA))
+                         ->getJson('/api/finance/dashboard');
+
+        $response->assertStatus(200)
+                 ->assertJsonPath('status', 'success')
+                 ->assertJsonPath('nis', '26080301')
+                 ->assertJsonPath('class_name', '9A')
+                 ->assertJsonPath('summary.total_tagihan', 450000)
+                 ->assertJsonPath('summary.count', 1);
+
+        $titles = array_column($response->json('list_tagihan'), 'title');
+        $this->assertContains('SPP Milik Siswa A', $titles);
+        $this->assertNotContains('SPP BOCOR Milik Siswa Collision', $titles);
+    }
+
+    // ================================================================
+    // TEST 12 (TU-01): Isolasi kepemilikan pada createPayment,
+    // checkStatus, getInvoiceDetail, dan getTransactionHistory
+    // ================================================================
+
+    public function test_finance_payment_and_history_endpoints_enforce_student_profile_ownership(): void
+    {
+        ['token' => $tokenA, 'profile' => $profileA] = $this->makeStudentWithToken([
+            'nis'  => '26080401',
+            'nisn' => '4000000001',
+            'name' => 'Siswa A',
+        ]);
+
+        ['profile' => $profileB] = $this->makeStudentWithToken([
+            'nis'   => '26080402',
+            'nisn'  => '4000000002',
+            'name'  => 'Siswa B',
+            'email' => '26080402',
+        ]);
+
+        $billA = StudentBill::create([
+            'student_id'        => $profileA->id,
+            'type'              => 'SPP',
+            'name'              => 'SPP Lunas Siswa A',
+            'amount'            => 500000,
+            'status'            => 'PAID',
+            'paid_amount'       => 500000,
+            'midtrans_order_id' => 'BILL-A-1001',
+            'payment_method'    => 'MIDTRANS',
+        ]);
+
+        $billBUnpaid = StudentBill::create([
+            'student_id'  => $profileB->id,
+            'type'        => 'SPP',
+            'name'        => 'SPP Belum Lunas Siswa B',
+            'amount'      => 650000,
+            'status'      => 'UNPAID',
+            'paid_amount' => 0,
+        ]);
+
+        $billBPaid = StudentBill::create([
+            'student_id'        => $profileB->id,
+            'type'              => 'SPP',
+            'name'              => 'SPP Lunas Siswa B',
+            'amount'            => 650000,
+            'status'            => 'PAID',
+            'paid_amount'       => 650000,
+            'midtrans_order_id' => 'BILL-B-2002',
+            'payment_method'    => 'MIDTRANS',
+        ]);
+
+        // 1. Siswa A tidak boleh membuat pembayaran atas bill milik Siswa B
+        $this->withHeaders($this->authHeader($tokenA))
+             ->postJson('/api/finance/payment/create', [
+                 'id'   => $billBUnpaid->id,
+                 'type' => 'SPP',
+             ])
+             ->assertStatus(400);
+
+        // 2. Siswa A hanya melihat transaksi miliknya sendiri di /api/finance/transactions
+        $historyResp = $this->withHeaders($this->authHeader($tokenA))
+                            ->getJson('/api/finance/transactions')
+                            ->assertStatus(200);
+
+        $historyTitles = array_column($historyResp->json('data'), 'title');
+        $this->assertContains('SPP Lunas Siswa A', $historyTitles);
+        $this->assertNotContains('SPP Lunas Siswa B', $historyTitles);
+
+        // 3. Siswa A dapat cek status & invoice miliknya sendiri, tetapi 404 untuk order milik Siswa B
+        $this->withHeaders($this->authHeader($tokenA))
+             ->getJson('/api/finance/payment/status/BILL-A-1001')
+             ->assertStatus(200)
+             ->assertJsonPath('payment_status', 'PAID');
+
+        $this->withHeaders($this->authHeader($tokenA))
+             ->getJson('/api/finance/payment/status/BILL-B-2002')
+             ->assertStatus(404);
+
+        $this->withHeaders($this->authHeader($tokenA))
+             ->getJson('/api/finance/payment/invoice/BILL-A-1001')
+             ->assertStatus(200)
+             ->assertJsonPath('data.total_amount', 500000);
+
+        $this->withHeaders($this->authHeader($tokenA))
+             ->getJson('/api/finance/payment/invoice/BILL-B-2002')
+             ->assertStatus(404);
+    }
 }

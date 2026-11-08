@@ -13,6 +13,25 @@ use Illuminate\Support\Facades\DB;
 
 class ParentApiController extends Controller
 {
+    /**
+     * Resolve the authenticated Student profile (student_profiles) from the Sanctum principal.
+     * Supports tokens issued on User (via user_id -> student_profiles.user_id) or directly on Student.
+     */
+    private function resolveAuthenticatedStudent(Request $request): ?Student
+    {
+        $principal = $request->user();
+
+        if (! $principal) {
+            return null;
+        }
+
+        if ($principal instanceof Student) {
+            return $principal;
+        }
+
+        return Student::where('user_id', $principal->id)->first();
+    }
+
     // =================================================================
     // 1. LOGIN (Ortu Login pakai NIS & No HP)
     // =================================================================
@@ -47,9 +66,17 @@ class ParentApiController extends Controller
     // =================================================================
     public function getHomeData(Request $request)
     {
-        $student = $request->user(); // Ambil user dari token
+        $user    = $request->user();
+        $student = $this->resolveAuthenticatedStudent($request);
 
-        // A. AMBIL SPP (Status UNPAID)
+        if (! $student) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Akses ditolak: profil siswa tidak ditemukan.',
+            ], 403);
+        }
+
+        // A. AMBIL SPP (Status UNPAID) — gunakan student_profiles.id, BUKAN users.id
         $sppBills = StudentBill::where('student_id', $student->id)
             ->where('type', 'SPP')
             ->where('status', 'UNPAID')
@@ -111,7 +138,7 @@ class ParentApiController extends Controller
 
         return response()->json([
             'status'       => 'success',
-            'student_name' => $student->name,
+            'student_name' => $student->name ?? $user?->name,
             'nis'          => $student->nis,
             'class_name'   => $student->class_name,
             
@@ -132,6 +159,16 @@ class ParentApiController extends Controller
     // =================================================================
     public function createPayment(Request $request)
     {
+        $user    = $request->user();
+        $student = $this->resolveAuthenticatedStudent($request);
+
+        if (! $student) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Akses ditolak: profil siswa tidak ditemukan.',
+            ], 403);
+        }
+
         // Request dari Android wajib bawa: id & type (SPP/BILL/POS)
         $request->validate([
             'id' => 'required',
@@ -146,7 +183,10 @@ class ParentApiController extends Controller
 
         // --- SKENARIO A: BAYAR TAGIHAN SEKOLAH (SPP/LAINNYA) ---
         if ($request->type == 'BILL' || $request->type == 'SPP') {
-            $bill = StudentBill::with('student')->find($request->id);
+            $bill = StudentBill::with('student')
+                ->where('student_id', $student->id)
+                ->whereKey($request->id)
+                ->first();
             
             if (!$bill || $bill->status == 'PAID') {
                 return response()->json(['message' => 'Tagihan tidak valid atau sudah lunas'], 400);
@@ -157,13 +197,16 @@ class ParentApiController extends Controller
             $itemName = substr($bill->name, 0, 50);
             
             $customerDetails = [
-                'first_name' => $bill->student->name,
-                'phone' => $bill->student->parent_phone,
+                'first_name' => $student->name ?? $user?->name,
+                'phone' => $student->parent_phone ?? $user?->phone,
             ];
 
         // --- SKENARIO B: BAYAR HUTANG KANTIN (POS) ---
         } elseif ($request->type == 'POS') {
-            $pos = PosOrder::with('student')->find($request->id);
+            $pos = PosOrder::with('student')
+                ->where('student_id', $student->id)
+                ->whereKey($request->id)
+                ->first();
             
             if (!$pos || $pos->payment_status == 'PAID') {
                 return response()->json(['message' => 'Transaksi tidak valid atau sudah lunas'], 400);
@@ -174,8 +217,8 @@ class ParentApiController extends Controller
             $itemName = "Jajan Kantin " . $pos->created_at->format('d/m');
 
             $customerDetails = [
-                'first_name' => $pos->student->name,
-                'phone' => $pos->student->parent_phone,
+                'first_name' => $student->name ?? $user?->name,
+                'phone' => $student->parent_phone ?? $user?->phone,
             ];
 
         } else {
@@ -297,8 +340,7 @@ class ParentApiController extends Controller
      */
     public function getBills(Request $request)
     {
-        $user    = $request->user();
-        $student = \App\Models\Student::where('user_id', $user->id)->first();
+        $student = $this->resolveAuthenticatedStudent($request);
 
         // Guard: user tanpa student profile tidak boleh akses finance bills
         if (!$student) {
@@ -323,6 +365,137 @@ class ParentApiController extends Controller
         return response()->json([
             'status' => 'success',
             'data'   => $bills,
+        ]);
+    }
+
+    /**
+     * GET /api/finance/transactions
+     * Riwayat pembayaran & transaksi yang di-scope ke student_profiles.id milik siswa login.
+     */
+    public function getTransactionHistory(Request $request)
+    {
+        $student = $this->resolveAuthenticatedStudent($request);
+
+        if (!$student) {
+            return response()->json(['message' => 'Akses ditolak: profil siswa tidak ditemukan.'], 403);
+        }
+
+        $transactions = StudentBill::where('student_id', $student->id)
+            ->whereIn('status', ['PAID', 'PENDING'])
+            ->latest()
+            ->get()
+            ->map(function ($bill) {
+                $dateSource = $bill->paid_at ?? $bill->updated_at ?? $bill->created_at;
+
+                return [
+                    'id'     => $bill->midtrans_order_id ?? ('BILL-' . $bill->id),
+                    'title'  => $bill->name,
+                    'type'   => strtolower((string) $bill->type),
+                    'amount' => (int) $bill->amount,
+                    'status' => $bill->status === 'PAID' ? 'success' : 'pending',
+                    'method' => $bill->payment_method ?? 'MIDTRANS',
+                    'date'   => $dateSource?->format('d M Y'),
+                ];
+            });
+
+        return response()->json([
+            'status' => 'success',
+            'data'   => $transactions,
+        ]);
+    }
+
+    /**
+     * GET /api/finance/payment/status/{order_id}
+     * Cek status pembayaran berdasarkan order_id yang di-scope ke student_profiles.id milik siswa login.
+     */
+    public function checkStatus(Request $request, string $orderId)
+    {
+        $student = $this->resolveAuthenticatedStudent($request);
+
+        if (!$student) {
+            return response()->json(['message' => 'Akses ditolak: profil siswa tidak ditemukan.'], 403);
+        }
+
+        $bill = StudentBill::where('student_id', $student->id)
+            ->where('midtrans_order_id', $orderId)
+            ->first();
+
+        if ($bill) {
+            return response()->json([
+                'status'         => 'success',
+                'order_id'       => $orderId,
+                'payment_status' => $bill->status,
+            ]);
+        }
+
+        $pos = PosOrder::where('student_id', $student->id)
+            ->where('transaction_code', $orderId)
+            ->first();
+
+        if ($pos) {
+            return response()->json([
+                'status'         => 'success',
+                'order_id'       => $orderId,
+                'payment_status' => $pos->payment_status,
+            ]);
+        }
+
+        return response()->json([
+            'status'  => 'error',
+            'message' => 'Transaksi tidak ditemukan.',
+        ], 404);
+    }
+
+    /**
+     * GET /api/finance/payment/invoice/{order_id}
+     * Detail invoice pembayaran yang di-scope ke student_profiles.id milik siswa login.
+     */
+    public function getInvoiceDetail(Request $request, string $orderId)
+    {
+        $user    = $request->user();
+        $student = $this->resolveAuthenticatedStudent($request);
+
+        if (!$student) {
+            return response()->json(['message' => 'Akses ditolak: profil siswa tidak ditemukan.'], 403);
+        }
+
+        $bill = StudentBill::where('student_id', $student->id)
+            ->where('midtrans_order_id', $orderId)
+            ->first();
+
+        if (!$bill && ctype_digit($orderId)) {
+            $bill = StudentBill::where('student_id', $student->id)
+                ->whereKey((int) $orderId)
+                ->first();
+        }
+
+        if (!$bill) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Invoice tidak ditemukan.',
+            ], 404);
+        }
+
+        $paidAtSource = $bill->paid_at ?? $bill->updated_at ?? $bill->created_at;
+
+        return response()->json([
+            'status' => 'success',
+            'data'   => [
+                'order_id'       => $bill->midtrans_order_id ?? (string) $bill->id,
+                'student_name'   => $student->name ?? $user?->name,
+                'nis'            => $student->nis,
+                'class_name'     => $student->class_name,
+                'paid_at'        => $paidAtSource?->format('d M Y, H:i'),
+                'payment_method' => $bill->payment_method ?? 'MIDTRANS',
+                'status'         => $bill->status,
+                'total_amount'   => (int) $bill->amount,
+                'items'          => [
+                    [
+                        'name'   => $bill->name,
+                        'amount' => (int) $bill->amount,
+                    ],
+                ],
+            ],
         ]);
     }
 }
