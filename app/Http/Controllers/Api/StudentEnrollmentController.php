@@ -44,10 +44,19 @@ class StudentEnrollmentController extends Controller
     {
         // ============================================================
         // 1. AUTH SERVICE-TO-SERVICE
+        //    Fail-closed: jika config kosong, tolak semua request.
+        //    SEC-05: Gunakan hash_equals() (constant-time comparison).
         // ============================================================
         $expectedKey = config('services.tu_sync.secret');
+        $providedKey = $request->header('X-TU-SYNC-KEY');
 
-        if (empty($expectedKey) || $request->header('X-TU-SYNC-KEY') !== $expectedKey) {
+        if (
+            !is_string($expectedKey)
+            || trim($expectedKey) === ''
+            || !is_string($providedKey)
+            || $providedKey === ''
+            || !hash_equals($expectedKey, $providedKey)
+        ) {
             Log::warning('StudentEnrollmentController: request ditolak — X-TU-SYNC-KEY tidak valid', [
                 'ip' => $request->ip(),
             ]);

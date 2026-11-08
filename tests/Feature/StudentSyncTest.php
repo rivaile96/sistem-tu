@@ -270,12 +270,24 @@ class StudentSyncTest extends TestCase
     }
 
     // ===========================================================
-    // TEST 11: Unauthorized sync ditolak (tanpa key)
+    // TEST 11: Unauthorized sync ditolak (tanpa key / secret kosong)
     // ===========================================================
     public function test_unauthorized_sync_is_rejected_without_key(): void
     {
         $response = $this->postJson('/api/internal/sync-student', $this->validPayload());
-        $response->assertStatus(401);
+        $response->assertStatus(401)
+                 ->assertJsonPath('success', false)
+                 ->assertJsonPath('message', 'Unauthorized');
+
+        // Header kosong "" juga harus ditolak
+        $this->postSync($this->validPayload(), '')->assertStatus(401);
+
+        // Fail-closed: jika config('services.tu_sync.secret') kosong/null, semua request ditolak
+        config(['services.tu_sync.secret' => '']);
+        $this->postSync($this->validPayload(), 'TuSyncSecretKey2026!')->assertStatus(401);
+
+        config(['services.tu_sync.secret' => null]);
+        $this->postSync($this->validPayload(), 'TuSyncSecretKey2026!')->assertStatus(401);
 
         $this->assertEquals(0, Student::count());
     }

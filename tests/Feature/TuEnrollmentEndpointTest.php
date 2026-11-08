@@ -45,11 +45,27 @@ class TuEnrollmentEndpointTest extends TestCase
 
     public function test_invalid_key_returns_401(): void
     {
-        $this->postEnrollment([
+        $payload = [
             'nis'         => '9900001',
             'status'      => 'enrolled',
             'enrolled_at' => now()->subDay()->toIso8601String(),
-        ], 'wrong-key')->assertStatus(401);
+        ];
+
+        $this->postEnrollment($payload, 'wrong-key')
+            ->assertStatus(401)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'Unauthorized');
+
+        // Header kosong "" atau tanpa header harus ditolak 401
+        $this->postEnrollment($payload, '')->assertStatus(401);
+        $this->postJson('/api/internal/student-enrollment', $payload)->assertStatus(401);
+
+        // Fail-closed: jika secret server kosong/null, request tetap ditolak 401
+        config(['services.tu_sync.secret' => '']);
+        $this->postEnrollment($payload, $this->syncKey)->assertStatus(401);
+
+        config(['services.tu_sync.secret' => null]);
+        $this->postEnrollment($payload, $this->syncKey)->assertStatus(401);
     }
 
     public function test_valid_enrollment_sets_enrolled_at(): void
