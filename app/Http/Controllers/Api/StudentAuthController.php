@@ -100,12 +100,19 @@ class StudentAuthController extends Controller
         // ============================================================
         // 4. CEK STATUS AKTIF
         //
-        // Cek via student_profiles.status — student yang sudah
-        // graduated/inactive tidak boleh login.
+        // Cek via users.is_active dan student_profiles.status —
+        // student yang sudah graduated/inactive tidak boleh login.
         // ============================================================
+        if (isset($user->is_active) && $user->is_active === false) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Akun tidak aktif. Hubungi TU.',
+            ], 403);
+        }
+
         $profile = Student::where('user_id', $user->id)->first();
 
-        if (!$profile || !in_array($profile->status, ['active'])) {
+        if (!$profile || !in_array($profile->status, ['active'], true)) {
             Log::warning('StudentAuthController: login ditolak — student tidak aktif', [
                 'user_id' => $user->id,
                 'status'  => $profile?->status ?? 'no_profile',
@@ -125,7 +132,9 @@ class StudentAuthController extends Controller
         // multiple active session yang bisa disalahgunakan.
         // ============================================================
         $user->tokens()->delete();
-        $token = $user->createToken('mobile-student')->plainTextToken;
+        $expiryHours = (int) config('finance_assertion.finance_token_expiry_hours', 24);
+        $expiresAt   = now()->addHours($expiryHours);
+        $token       = $user->createToken('mobile-student', ['finance', 'student'], $expiresAt)->plainTextToken;
 
         Log::info('StudentAuthController: login berhasil', [
             'user_id'    => $user->id,

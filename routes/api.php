@@ -14,18 +14,24 @@ Route::post('/midtrans-callback',  [MidtransController::class, 'callback']); // 
 
 // ============================================================
 // 2. FINANCE ROUTES
-//    auth:sanctum  — harus punya TU Sanctum token
-//    role:student  — hanya siswa
+//    auth:sanctum              — harus punya TU Sanctum token
+//    role:student,parent,ortu  — hanya siswa / wali murid
 // ============================================================
-Route::middleware(['auth:sanctum', 'role:student'])
+Route::middleware(['auth:sanctum', 'role:student,parent,ortu'])
     ->prefix('finance')
     ->group(function () {
         Route::get('/dashboard',                 [ParentApiController::class, 'getHomeData']);
-        Route::post('/payment/create',           [ParentApiController::class, 'createPayment']);
+        Route::post('/payment/create',           [ParentApiController::class, 'createPayment'])
+             ->middleware('throttle:10,1');
+        Route::post('/pay',                      [ParentApiController::class, 'createPayment'])
+             ->middleware('throttle:10,1');
         Route::get('/transactions',              [ParentApiController::class, 'getTransactionHistory']);
         Route::get('/payment/status/{order_id}', [ParentApiController::class, 'checkStatus']);
+        Route::get('/pay/status/{order_id}',     [ParentApiController::class, 'checkStatus']);
         Route::get('/payment/invoice/{order_id}',[ParentApiController::class, 'getInvoiceDetail']);
-        Route::post('/pin/set',                  [ParentApiController::class, 'setPin']);
+        Route::get('/invoice/{order_id}',        [ParentApiController::class, 'getInvoiceDetail']);
+        Route::post('/pin/set',                  [ParentApiController::class, 'setPin'])
+             ->middleware('throttle:5,1');
         Route::post('/pin/verify',               [ParentApiController::class, 'verifyPin'])
              ->middleware('throttle:5,1');
         Route::get('/banners',                   [ParentApiController::class, 'getBanners']);

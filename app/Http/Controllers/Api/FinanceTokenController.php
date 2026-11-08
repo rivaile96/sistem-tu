@@ -229,6 +229,21 @@ class FinanceTokenController extends Controller
             ], 404);
         }
 
+        if (isset($user->is_active) && $user->is_active === false) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Akun siswa tidak aktif.',
+            ], 403);
+        }
+
+        $studentProfile = \App\Models\Student::where('user_id', $user->id)->first();
+        if ($studentProfile && ! in_array($studentProfile->status, ['active'], true)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Akun siswa tidak aktif.',
+            ], 403);
+        }
+
         // ================================================================
         // 9. CONSUME NONCE + ISSUE FINANCE TOKEN (atomic via DB transaction)
         // ================================================================

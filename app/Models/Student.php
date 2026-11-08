@@ -19,6 +19,10 @@ class Student extends Model
     // Kolom yang aman diisi massal (semua kecuali ID)
     protected $guarded = ['id'];
 
+    protected $hidden = [
+        'pin',
+    ];
+
     // Casting tipe data otomatis
     protected $casts = [
         'created_at'  => 'datetime',
