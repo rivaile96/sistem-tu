@@ -28,10 +28,10 @@ class DashboardController extends Controller
                                     ->where('payment_method', 'CASH')
                                     ->sum('amount');
 
-        // C. Pemasukan Tagihan Sekolah - MIDTRANS (Payment Gateway)
+        // C. Pemasukan Tagihan Sekolah - ONLINE (DOKU Gateway & Midtrans Historis)
         $billMidtransToday = StudentBill::whereDate('updated_at', today())
                                         ->where('status', 'PAID')
-                                        ->where('payment_method', 'MIDTRANS')
+                                        ->whereIn('payment_method', ['DOKU', 'MIDTRANS'])
                                         ->sum('amount');
 
         // TOTAL SEMUA (Untuk Card Utama)
@@ -55,7 +55,7 @@ class DashboardController extends Controller
         $monthlyMidtrans = StudentBill::whereMonth('updated_at', now()->month)
                                       ->whereYear('updated_at', now()->year)
                                       ->where('status', 'PAID')
-                                      ->where('payment_method', 'MIDTRANS')
+                                      ->whereIn('payment_method', ['DOKU', 'MIDTRANS'])
                                       ->sum('amount');
 
 
@@ -123,20 +123,22 @@ class DashboardController extends Controller
                                  ->limit(5)
                                  ->get()
                                  ->map(function($item) {
-            // Label Method lebih rapi
-            $methodLabel = $item->payment_method == 'MIDTRANS' ? 'Online (App)' : 'Tunai (TU)';
+            // Label Method lebih rapi (Dukungan DOKU & Midtrans historis)
+            $isOnline = in_array($item->payment_method, ['DOKU', 'MIDTRANS'], true);
+            $methodLabel = $isOnline ? 'Online (App)' : 'Tunai (TU)';
+            $studentName = $item->student?->name ?? 'Siswa';
             
             return [
                 'time' => $item->updated_at,
-                'desc' => 'Bayar Tagihan - ' . $item->student->name,
+                'desc' => 'Bayar Tagihan - ' . $studentName,
                 'amount' => $item->amount,
                 'type' => 'BILL',
                 'method' => $methodLabel
             ];
         });
 
-        // Gabung, Sort by Time, Ambil 5 Teratas
-        $recentActivities = $latestPos->merge($latestBill)->sortByDesc('time')->take(5);
+        // Gabung, Sort by Time, Ambil 5 Teratas (Gunakan toBase() agar merge array aman tanpa memanggil getKey())
+        $recentActivities = $latestPos->toBase()->concat($latestBill->toBase())->sortByDesc('time')->take(5)->values();
 
         // ==========================================================
         // RETURN VIEW

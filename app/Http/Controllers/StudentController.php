@@ -21,25 +21,27 @@ class StudentController extends Controller
                           ->orderBy('class_name')
                           ->pluck('class_name');
 
-        // 2. Query Data Siswa
-        $query = Student::query();
+        // 2. Query Data Siswa (Join users untuk akses users.name yang sebenarnya)
+        $query = Student::join('users', 'student_profiles.user_id', '=', 'users.id')
+                        ->select('student_profiles.*', 'users.name as name')
+                        ->with('user');
 
         // Filter: Pencarian Nama / NIS
         if ($request->search) {
             $query->where(function($q) use ($request) {
-                $q->where('name', 'like', '%' . $request->search . '%')
-                  ->orWhere('nis', 'like', '%' . $request->search . '%');
+                $q->where('users.name', 'like', '%' . $request->search . '%')
+                  ->orWhere('student_profiles.nis', 'like', '%' . $request->search . '%');
             });
         }
 
         // Filter: Berdasarkan Kelas
         if ($request->class_name) {
-            $query->where('class_name', $request->class_name);
+            $query->where('student_profiles.class_name', $request->class_name);
         }
 
         // Ambil data (Paginate 20 per halaman biar enteng)
-        $students = $query->orderBy('class_name')
-                          ->orderBy('name')
+        $students = $query->orderBy('student_profiles.class_name')
+                          ->orderBy('users.name')
                           ->paginate(20)
                           ->withQueryString();
 

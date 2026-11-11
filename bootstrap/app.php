@@ -25,11 +25,16 @@ return Application::configure(basePath: dirname(__DIR__))
             'ability' => \Laravel\Sanctum\Http\Middleware\CheckAbilities::class,
         ]);
 
-        // Konfigurasi Pengecualian CSRF (Untuk Webhook Midtrans nanti)
+        // Konfigurasi Pengecualian CSRF untuk Webhook Gateway
         $middleware->validateCsrfTokens(except: [
+            'api/doku/notification',
+            'api/doku/webhook',
+            'doku/notification',
+            'doku/webhook',
             'midtrans-callback',
             'api/midtrans-callback',
             'midtrans/webhook',
+            'api/midtrans/webhook',
         ]);
 
     })

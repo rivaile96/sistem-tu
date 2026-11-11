@@ -1,211 +1,449 @@
 <!DOCTYPE html>
-<html lang="id" class="h-full bg-gray-50">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="h-full bg-slate-50">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>{{ config('app.name', 'Sistem TU') }}</title>
+    <title>{{ config('app.name', 'Kaffah Sistem TU') }}</title>
     
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Figtree Font (SPMB Design Reference) -->
+    <link rel="preconnect" href="https://fonts.bunny.net">
+    <link href="https://fonts.bunny.net/css?family=figtree:400,500,600,700,800,900&display=swap" rel="stylesheet" />
     
+    <!-- SweetAlert2 -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    
     @vite(['resources/css/app.css', 'resources/js/app.js'])
     
     <style>
         [x-cloak] { display: none !important; }
-        .custom-scroll::-webkit-scrollbar { width: 5px; height: 5px; }
-        .custom-scroll::-webkit-scrollbar-track { background: transparent; }
-        .custom-scroll::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar { width: 5px; height: 5px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 9999px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.4); }
     </style>
 </head>
-<body class="h-full font-sans antialiased text-gray-900" x-data="{ sidebarOpen: false }">
+<body class="h-full font-sans antialiased bg-slate-50 text-slate-900" 
+      x-data="{ 
+          isCollapsed: localStorage.getItem('tu_sidebar_collapsed') === 'true',
+          mobileMenuOpen: false,
+          toggleCollapse() {
+              this.isCollapsed = !this.isCollapsed;
+              localStorage.setItem('tu_sidebar_collapsed', this.isCollapsed);
+          }
+      }">
 
+    <!-- MOBILE BACKDROP -->
+    <div x-show="mobileMenuOpen" 
+         @click="mobileMenuOpen = false" 
+         x-transition:enter="transition-opacity ease-linear duration-300"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="transition-opacity ease-linear duration-300"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0"
+         class="fixed inset-0 z-40 bg-slate-900/60 lg:hidden backdrop-blur-sm" 
+         x-cloak></div>
+
+    <!-- SIDEBAR (SPMB MATCHING #178BC1) -->
     <aside 
-        class="fixed inset-y-0 left-0 z-50 w-64 bg-[#0ea5e9] text-white transition-transform duration-300 transform flex flex-col shadow-2xl h-full"
-        :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'">
+        class="fixed top-0 left-0 z-50 h-screen flex flex-col bg-[#178BC1] text-white shadow-2xl overflow-hidden font-sans transition-all duration-300 ease-in-out"
+        :class="{
+            'w-[280px]': !isCollapsed,
+            'w-[90px]': isCollapsed,
+            'translate-x-0': mobileMenuOpen,
+            '-translate-x-full lg:translate-x-0': !mobileMenuOpen
+        }">
         
-        <div class="h-16 flex items-center justify-between px-6 bg-[#0284c7] flex-shrink-0">
-            <div class="flex items-center gap-2 font-bold text-xl tracking-wide">
-                <div class="p-1 bg-white text-[#0ea5e9] rounded-lg">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+        <!-- HEADER DENGAN LOGO ASLI -->
+        <div class="h-20 flex items-center border-b border-white/20 shrink-0 transition-all duration-300"
+             :class="isCollapsed ? 'justify-center px-2' : 'justify-between px-6'">
+            <div x-show="!isCollapsed" class="flex items-center gap-3 overflow-hidden" x-transition>
+                <div class="flex items-center justify-center w-10 h-10 p-1 bg-white rounded-lg shadow-sm text-[#178BC1] font-black shrink-0 text-xl tracking-tight">
+                    K
                 </div>
-                Sistem TU
+                <div class="truncate">
+                    <h1 class="text-sm font-bold tracking-wide truncate">
+                        KAFFAH <span class="font-light opacity-80">SISTEM TU</span>
+                    </h1>
+                    <p class="text-[10px] text-blue-100 opacity-80 truncate font-medium">Tata Usaha & Keuangan</p>
+                </div>
             </div>
-            <button @click="sidebarOpen = false" class="lg:hidden text-white/80 hover:text-white">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+
+            <div x-show="isCollapsed" class="flex items-center justify-center" x-cloak>
+                <div class="flex items-center justify-center w-10 h-10 p-1 bg-white rounded-lg shadow-sm text-[#178BC1] font-black shrink-0 text-xl">
+                    K
+                </div>
+            </div>
+
+            <!-- TOGGLE BUTTON DESKTOP -->
+            <button @click="toggleCollapse()" 
+                    class="hidden lg:flex p-2 transition-colors rounded-lg hover:bg-white/20 shrink-0 text-white"
+                    :title="isCollapsed ? 'Perluas Sidebar' : 'Ciutkan Sidebar'">
+                <!-- Chevron Left -->
+                <svg x-show="!isCollapsed" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+                    <polyline points="15 18 9 12 15 6"></polyline>
+                </svg>
+                <!-- Chevron Right -->
+                <svg x-show="isCollapsed" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" x-cloak>
+                    <polyline points="9 18 15 12 9 6"></polyline>
+                </svg>
+            </button>
+
+            <!-- CLOSE BUTTON MOBILE -->
+            <button @click="mobileMenuOpen = false" class="lg:hidden p-2 text-white/80 hover:text-white rounded-lg">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
             </button>
         </div>
 
-        <nav class="flex-1 overflow-y-auto custom-scroll px-3 py-6 space-y-2">
-            <p class="px-3 text-[10px] font-bold text-blue-100 uppercase tracking-widest mb-2 opacity-70">Menu Utama</p>
+        <!-- MENU LIST (SCROLLABLE) -->
+        <nav class="flex-1 px-3 py-6 space-y-1.5 overflow-y-auto custom-scrollbar">
             
-            <a href="{{ route('dashboard') }}" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition font-medium {{ request()->routeIs('dashboard') ? 'bg-white text-[#0ea5e9] shadow-md' : 'text-blue-50 hover:bg-white/10 hover:text-white' }}">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path></svg>
-                <span>Dashboard</span>
+            <!-- SECTION: UTAMA -->
+            <div x-show="!isCollapsed" class="px-4 mt-2 mb-2 text-[10px] font-bold uppercase tracking-widest text-blue-200 opacity-70 truncate">
+                Utama
+            </div>
+
+            <!-- Dashboard -->
+            <a href="{{ route('dashboard') }}" 
+               class="relative flex items-center py-3 rounded-xl transition-all group {{ request()->routeIs('dashboard') ? 'bg-white text-[#178BC1] shadow-lg font-bold' : 'text-white hover:bg-white/10 font-medium' }}"
+               :class="isCollapsed ? 'justify-center px-0' : 'px-4 gap-3'"
+               title="Dashboard">
+                <div class="shrink-0 transition-transform group-hover:scale-110">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+                        <rect x="3" y="3" width="7" height="7"></rect>
+                        <rect x="14" y="3" width="7" height="7"></rect>
+                        <rect x="14" y="14" width="7" height="7"></rect>
+                        <rect x="3" y="14" width="7" height="7"></rect>
+                    </svg>
+                </div>
+                <span x-show="!isCollapsed" class="text-sm whitespace-nowrap" x-transition>Dashboard</span>
             </a>
 
-            <a href="{{ route('students.index') }}" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition font-medium {{ request()->routeIs('students.*') ? 'bg-white text-[#0ea5e9] shadow-md' : 'text-blue-50 hover:bg-white/10 hover:text-white' }}">
-    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
-    <span>Manajemen Siswa</span>
-</a>
+            <!-- SECTION: AKADEMIK & SISWA -->
+            <div x-show="!isCollapsed" class="px-4 mt-4 mb-2 text-[10px] font-bold uppercase tracking-widest text-blue-200 opacity-70 truncate">
+                Akademik & Siswa
+            </div>
 
-            <div x-data="{ open: {{ request()->routeIs('bills.*') ? 'true' : 'false' }} }">
-                <button @click="open = !open" class="w-full flex justify-between items-center px-3 py-2.5 rounded-xl text-sm transition font-medium {{ request()->routeIs('bills.*') ? 'bg-white/10 text-white' : 'text-blue-50 hover:bg-white/10 hover:text-white' }}">
-                    <div class="flex items-center gap-3">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                        <span>Tagihan Sekolah</span>
-                    </div>
-                    <svg class="w-4 h-4 transition-transform duration-200" :class="{'rotate-180': open}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-                </button>
-
-                <div x-show="open" x-cloak class="mt-1 space-y-1 bg-[#0284c7]/30 rounded-xl p-1">
-                    
-                    <a href="{{ route('bills.index') }}" class="flex items-center gap-3 px-3 py-2 rounded-lg text-xs transition {{ request()->routeIs('bills.index') ? 'bg-white text-[#0ea5e9] font-bold shadow-sm' : 'text-blue-100 hover:text-white hover:bg-white/10' }}">
-                       <span>Monitoring Tagihan</span>
-                    </a>
-
-                    <a href="{{ route('bills.create') }}" class="flex items-center gap-3 px-3 py-2 rounded-lg text-xs transition {{ request()->routeIs('bills.create') ? 'bg-white text-[#0ea5e9] font-bold shadow-sm' : 'text-blue-100 hover:text-white hover:bg-white/10' }}">
-                       <span>Buat Tagihan Massal</span>
-                    </a>
-                    
+            <!-- Data Siswa -->
+            <a href="{{ route('students.index') }}" 
+               class="relative flex items-center py-3 rounded-xl transition-all group {{ request()->routeIs('students.*') ? 'bg-white text-[#178BC1] shadow-lg font-bold' : 'text-white hover:bg-white/10 font-medium' }}"
+               :class="isCollapsed ? 'justify-center px-0' : 'px-4 gap-3'"
+               title="Data Siswa">
+                <div class="shrink-0 transition-transform group-hover:scale-110">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+                        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
+                        <circle cx="9" cy="7" r="4"></circle>
+                        <path d="M22 21v-2a4 4 0 0 0-3-3.87"></path>
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                    </svg>
                 </div>
-            </div>
-
-            <div x-data="{ open: {{ request()->routeIs('pos.*') ? 'true' : 'false' }} }">
-                <button @click="open = !open" class="w-full flex justify-between items-center px-3 py-2.5 rounded-xl text-sm transition font-medium {{ request()->routeIs('pos.*') ? 'bg-white/10 text-white' : 'text-blue-50 hover:bg-white/10 hover:text-white' }}">
-                    <div class="flex items-center gap-3">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path></svg>
-                        <span>POS Sekolah</span>
-                    </div>
-                    <svg class="w-4 h-4 transition-transform duration-200" :class="{'rotate-180': open}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-                </button>
-                <div x-show="open" x-cloak class="mt-1 space-y-1 bg-[#0284c7]/30 rounded-xl p-1">
-                    <a href="{{ route('pos.items.index') }}" class="flex items-center gap-3 px-3 py-2 rounded-lg text-xs transition {{ request()->routeIs('pos.items.*') ? 'bg-white text-[#0ea5e9] font-bold shadow-sm' : 'text-blue-100 hover:text-white hover:bg-white/10' }}">
-                       <span>Master Barang</span>
-                    </a>
-                    <a href="{{ route('pos.bundles.index') }}"
-   class="flex items-center gap-3 px-3 py-2 rounded-lg text-xs transition
-   {{ request()->routeIs('pos.bundles.*') 
-        ? 'bg-white text-[#0ea5e9] font-bold shadow-sm' 
-        : 'text-blue-100 hover:text-white hover:bg-white/10' }}">
-    
-    <span>Paket Bundling</span>
-</a>
-                    <a href="{{ route('pos.transaction') }}" class="flex items-center gap-3 px-3 py-2 rounded-lg text-xs transition {{ request()->routeIs('pos.transaction') ? 'bg-white text-[#0ea5e9] font-bold shadow-sm' : 'text-blue-100 hover:text-white hover:bg-white/10' }}">
-                       <span>Kasir / Transaksi</span>
-                    </a>
-                    <a href="{{ route('pos.history.index') }}" class="flex items-center gap-3 px-3 py-2 rounded-lg text-xs transition {{ request()->routeIs('pos.history.*') ? 'bg-white text-[#0ea5e9] font-bold shadow-sm' : 'text-blue-100 hover:text-white hover:bg-white/10' }}">
-                       <span>Riwayat Transaksi</span>
-                    </a>
-                </div>
-            </div>
-
-            <p class="px-3 text-[10px] font-bold text-blue-100 uppercase tracking-widest mb-2 mt-6 opacity-70">Pengaturan</p>
-
-            <div x-data="{ open: {{ request()->routeIs('settings.*') ? 'true' : 'false' }} }">
-                <button @click="open = !open" class="w-full flex justify-between items-center px-3 py-2.5 rounded-xl text-sm transition font-medium {{ request()->routeIs('settings.*') ? 'bg-white/10 text-white' : 'text-blue-50 hover:bg-white/10 hover:text-white' }}">
-                    <div class="flex items-center gap-3">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
-                        <span>Konfigurasi</span>
-                    </div>
-                    <svg class="w-4 h-4 transition-transform duration-200" :class="{'rotate-180': open}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-                </button>
-                <div x-show="open" x-cloak class="mt-1 space-y-1 bg-[#0284c7]/30 rounded-xl p-1">
-    <a href="{{ route('settings.integration') }}"
-       class="flex items-center gap-3 px-3 py-2 rounded-lg text-xs transition
-       {{ request()->routeIs('settings.integration')
-            ? 'bg-white text-[#0ea5e9] font-bold shadow-sm'
-            : 'text-blue-100 hover:text-white hover:bg-white/10' }}">
-
-        <!-- Icon Integrasi / Link -->
-        <svg class="w-4 h-4"
-             fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                  d="M13.828 10.172a4 4 0 010 5.656m-3.656-5.656a4 4 0 010 5.656M8 12h8"/>
-        </svg>
-
-        <span>Integrasi Kesiswaan</span>
-    </a>
-</div>
-                <div x-show="open" x-cloak class="mt-1 space-y-1 bg-[#0284c7]/30 rounded-xl p-1">
-    <a href="{{ route('school.settings') }}"
-       class="flex items-center gap-3 px-3 py-2 rounded-lg text-xs transition
-       {{ request()->routeIs('school.settings')
-            ? 'bg-white text-[#0ea5e9] font-bold shadow-sm'
-            : 'text-blue-100 hover:text-white hover:bg-white/10' }}">
-
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                  d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
-        </svg>
-
-        <span>Identitas Sekolah</span>
-    </a>
-</div>
-            </div>
-
-            <a href="{{ route('profile.edit') }}" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition font-medium {{ request()->routeIs('profile.*') ? 'bg-white text-[#0ea5e9] shadow-md' : 'text-blue-50 hover:bg-white/10 hover:text-white' }}">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
-                <span>Profile User</span>
+                <span x-show="!isCollapsed" class="text-sm whitespace-nowrap" x-transition>Data Siswa</span>
             </a>
+
+            <!-- SECTION: KEUANGAN & TAGIHAN -->
+            <div x-show="!isCollapsed" class="px-4 mt-4 mb-2 text-[10px] font-bold uppercase tracking-widest text-blue-200 opacity-70 truncate">
+                Keuangan & Tagihan
+            </div>
+
+            <!-- Daftar Tagihan -->
+            <a href="{{ route('bills.index') }}" 
+               class="relative flex items-center py-3 rounded-xl transition-all group {{ request()->routeIs('bills.index') ? 'bg-white text-[#178BC1] shadow-lg font-bold' : 'text-white hover:bg-white/10 font-medium' }}"
+               :class="isCollapsed ? 'justify-center px-0' : 'px-4 gap-3'"
+               title="Daftar Tagihan">
+                <div class="shrink-0 transition-transform group-hover:scale-110">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+                        <rect x="2" y="5" width="20" height="14" rx="2"></rect>
+                        <line x1="2" y1="10" x2="22" y2="10"></line>
+                    </svg>
+                </div>
+                <span x-show="!isCollapsed" class="text-sm whitespace-nowrap" x-transition>Daftar Tagihan</span>
+            </a>
+
+            <!-- Buat Tagihan -->
+            <a href="{{ route('bills.create') }}" 
+               class="relative flex items-center py-3 rounded-xl transition-all group {{ request()->routeIs('bills.create') ? 'bg-white text-[#178BC1] shadow-lg font-bold' : 'text-white hover:bg-white/10 font-medium' }}"
+               :class="isCollapsed ? 'justify-center px-0' : 'px-4 gap-3'"
+               title="Buat Tagihan Manual">
+                <div class="shrink-0 transition-transform group-hover:scale-110">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                        <polyline points="14 2 14 8 20 8"></polyline>
+                        <line x1="12" y1="18" x2="12" y2="12"></line>
+                        <line x1="9" y1="15" x2="15" y2="15"></line>
+                    </svg>
+                </div>
+                <span x-show="!isCollapsed" class="text-sm whitespace-nowrap" x-transition>Buat Tagihan</span>
+            </a>
+
+            <!-- Generate SPP Bulanan -->
+            <a href="{{ route('finance.spp.generate.index') }}" 
+               class="relative flex items-center py-3 rounded-xl transition-all group {{ request()->routeIs('finance.spp.generate.*') ? 'bg-white text-[#178BC1] shadow-lg font-bold' : 'text-white hover:bg-white/10 font-medium' }}"
+               :class="isCollapsed ? 'justify-center px-0' : 'px-4 gap-3'"
+               title="Generate SPP">
+                <div class="shrink-0 transition-transform group-hover:scale-110">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+                        <path d="M21 2v6h-6"></path>
+                        <path d="M3 12a9 9 0 0 1 15-6.7L21 8"></path>
+                        <path d="M3 22v-6h6"></path>
+                        <path d="M21 12a9 9 0 0 1-15 6.7L3 16"></path>
+                    </svg>
+                </div>
+                <span x-show="!isCollapsed" class="text-sm whitespace-nowrap" x-transition>Generate SPP</span>
+            </a>
+
+            <!-- Pengaturan Finance -->
+            <a href="{{ route('finance.settings.index') }}" 
+               class="relative flex items-center py-3 rounded-xl transition-all group {{ request()->routeIs('finance.settings.*') ? 'bg-white text-[#178BC1] shadow-lg font-bold' : 'text-white hover:bg-white/10 font-medium' }}"
+               :class="isCollapsed ? 'justify-center px-0' : 'px-4 gap-3'"
+               title="Pengaturan Finance">
+                <div class="shrink-0 transition-transform group-hover:scale-110">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+                        <line x1="4" y1="21" x2="4" y2="14"></line>
+                        <line x1="4" y1="10" x2="4" y2="3"></line>
+                        <line x1="12" y1="21" x2="12" y2="12"></line>
+                        <line x1="12" y1="8" x2="12" y2="3"></line>
+                        <line x1="20" y1="21" x2="20" y2="16"></line>
+                        <line x1="20" y1="12" x2="20" y2="3"></line>
+                        <line x1="1" y1="14" x2="7" y2="14"></line>
+                        <line x1="9" y1="8" x2="15" y2="8"></line>
+                        <line x1="17" y1="16" x2="23" y2="16"></line>
+                    </svg>
+                </div>
+                <span x-show="!isCollapsed" class="text-sm whitespace-nowrap" x-transition>Pengaturan Finance</span>
+            </a>
+
+            <!-- SECTION: POS & KANTIN -->
+            <div x-show="!isCollapsed" class="px-4 mt-4 mb-2 text-[10px] font-bold uppercase tracking-widest text-blue-200 opacity-70 truncate">
+                POS & Kantin
+            </div>
+
+            <!-- Transaksi Kasir -->
+            <a href="{{ route('pos.transaction') }}" 
+               class="relative flex items-center py-3 rounded-xl transition-all group {{ request()->routeIs('pos.transaction*') ? 'bg-white text-[#178BC1] shadow-lg font-bold' : 'text-white hover:bg-white/10 font-medium' }}"
+               :class="isCollapsed ? 'justify-center px-0' : 'px-4 gap-3'"
+               title="Kasir / Transaksi POS">
+                <div class="shrink-0 transition-transform group-hover:scale-110">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+                        <circle cx="9" cy="21" r="1"></circle>
+                        <circle cx="20" cy="21" r="1"></circle>
+                        <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
+                    </svg>
+                </div>
+                <span x-show="!isCollapsed" class="text-sm whitespace-nowrap" x-transition>Kasir POS</span>
+            </a>
+
+            <!-- Riwayat POS -->
+            <a href="{{ route('pos.history.index') }}" 
+               class="relative flex items-center py-3 rounded-xl transition-all group {{ request()->routeIs('pos.history.*') ? 'bg-white text-[#178BC1] shadow-lg font-bold' : 'text-white hover:bg-white/10 font-medium' }}"
+               :class="isCollapsed ? 'justify-center px-0' : 'px-4 gap-3'"
+               title="Riwayat Transaksi POS">
+                <div class="shrink-0 transition-transform group-hover:scale-110">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                        <polyline points="14 2 14 8 20 8"></polyline>
+                        <line x1="16" y1="13" x2="8" y2="13"></line>
+                        <line x1="16" y1="17" x2="8" y2="17"></line>
+                        <polyline points="10 9 9 9 8 9"></polyline>
+                    </svg>
+                </div>
+                <span x-show="!isCollapsed" class="text-sm whitespace-nowrap" x-transition>Riwayat POS</span>
+            </a>
+
+            <!-- Master Barang POS -->
+            <a href="{{ route('pos.items.index') }}" 
+               class="relative flex items-center py-3 rounded-xl transition-all group {{ request()->routeIs('pos.items.*') ? 'bg-white text-[#178BC1] shadow-lg font-bold' : 'text-white hover:bg-white/10 font-medium' }}"
+               :class="isCollapsed ? 'justify-center px-0' : 'px-4 gap-3'"
+               title="Master Barang">
+                <div class="shrink-0 transition-transform group-hover:scale-110">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+                        <line x1="16.5" y1="9.4" x2="7.5" y2="4.21"></line>
+                        <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                        <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                        <line x1="12" y1="22.08" x2="12" y2="12"></line>
+                    </svg>
+                </div>
+                <span x-show="!isCollapsed" class="text-sm whitespace-nowrap" x-transition>Master Barang</span>
+            </a>
+
+            <!-- SECTION: PENGATURAN -->
+            <div x-show="!isCollapsed" class="px-4 mt-4 mb-2 text-[10px] font-bold uppercase tracking-widest text-blue-200 opacity-70 truncate">
+                Pengaturan
+            </div>
+
+            <!-- Integrasi PPDB -->
+            <a href="{{ route('settings.integration') }}" 
+               class="relative flex items-center py-3 rounded-xl transition-all group {{ request()->routeIs('settings.integration') ? 'bg-white text-[#178BC1] shadow-lg font-bold' : 'text-white hover:bg-white/10 font-medium' }}"
+               :class="isCollapsed ? 'justify-center px-0' : 'px-4 gap-3'"
+               title="Integrasi Kesiswaan">
+                <div class="shrink-0 transition-transform group-hover:scale-110">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+                        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                    </svg>
+                </div>
+                <span x-show="!isCollapsed" class="text-sm whitespace-nowrap" x-transition>Integrasi PPDB</span>
+            </a>
+
+            <!-- Identitas Sekolah -->
+            <a href="{{ route('school.settings') }}" 
+               class="relative flex items-center py-3 rounded-xl transition-all group {{ request()->routeIs('school.settings') ? 'bg-white text-[#178BC1] shadow-lg font-bold' : 'text-white hover:bg-white/10 font-medium' }}"
+               :class="isCollapsed ? 'justify-center px-0' : 'px-4 gap-3'"
+               title="Identitas Sekolah">
+                <div class="shrink-0 transition-transform group-hover:scale-110">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+                        <rect x="4" y="2" width="16" height="20" rx="2" ry="2"></rect>
+                        <line x1="9" y1="22" x2="9" y2="22.01"></line>
+                        <line x1="15" y1="22" x2="15" y2="22.01"></line>
+                        <line x1="9" y1="6" x2="9" y2="6.01"></line>
+                        <line x1="15" y1="6" x2="15" y2="6.01"></line>
+                        <line x1="9" y1="10" x2="9" y2="10.01"></line>
+                        <line x1="15" y1="10" x2="15" y2="10.01"></line>
+                        <line x1="9" y1="14" x2="9" y2="14.01"></line>
+                        <line x1="15" y1="14" x2="15" y2="14.01"></line>
+                        <line x1="9" y1="18" x2="9" y2="18.01"></line>
+                        <line x1="15" y1="18" x2="15" y2="18.01"></line>
+                    </svg>
+                </div>
+                <span x-show="!isCollapsed" class="text-sm whitespace-nowrap" x-transition>Identitas Sekolah</span>
+            </a>
+
+            <!-- Profile User -->
+            <a href="{{ route('profile.edit') }}" 
+               class="relative flex items-center py-3 rounded-xl transition-all group {{ request()->routeIs('profile.*') ? 'bg-white text-[#178BC1] shadow-lg font-bold' : 'text-white hover:bg-white/10 font-medium' }}"
+               :class="isCollapsed ? 'justify-center px-0' : 'px-4 gap-3'"
+               title="Pengaturan Profil">
+                <div class="shrink-0 transition-transform group-hover:scale-110">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                        <circle cx="12" cy="7" r="4"></circle>
+                    </svg>
+                </div>
+                <span x-show="!isCollapsed" class="text-sm whitespace-nowrap" x-transition>Profil User</span>
+            </a>
+
         </nav>
 
-        <div class="p-4 border-t border-white/10 bg-[#0284c7] flex-shrink-0">
-            <div class="flex items-center gap-3">
-                <div class="w-9 h-9 rounded-full bg-white text-[#0ea5e9] flex items-center justify-center font-bold shadow-lg">
-                    {{ substr(Auth::user()->name, 0, 1) }}
-                </div>
-                <div class="overflow-hidden flex-1">
-                    <p class="text-xs font-bold truncate text-white">{{ Auth::user()->name }}</p>
-                    <form method="POST" action="{{ route('logout') }}">
-                        @csrf
-                        <button type="submit" class="text-[10px] text-blue-200 hover:text-white hover:underline">Logout</button>
-                    </form>
-                </div>
-            </div>
+        <!-- FOOTER SIDEBAR (SPMB MATCHING LOGOUT) -->
+        <div class="p-4 border-t border-white/20 bg-[#126da3]/20 shrink-0">
+            <form id="logout-form" method="POST" action="{{ route('logout') }}">
+                @csrf
+                <button type="button" 
+                        onclick="confirmLogout()" 
+                        class="w-full flex items-center gap-3 bg-white/10 hover:bg-red-500 text-white py-3 rounded-xl transition-all duration-300 group"
+                        :class="isCollapsed ? 'justify-center px-0' : 'px-4'"
+                        title="Logout">
+                    <svg class="w-5 h-5 shrink-0 transition-transform group-hover:scale-110" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                        <polyline points="16 17 21 12 16 7"></polyline>
+                        <line x1="21" y1="12" x2="9" y2="12"></line>
+                    </svg>
+                    <span x-show="!isCollapsed" class="text-sm font-bold tracking-wide" x-transition>LOGOUT</span>
+                </button>
+            </form>
         </div>
     </aside>
 
-    <div x-show="sidebarOpen" @click="sidebarOpen = false" 
-         x-transition.opacity 
-         class="fixed inset-0 z-40 bg-black/50 lg:hidden backdrop-blur-sm" x-cloak></div>
-
-    <div class="flex flex-col min-h-screen lg:pl-64">
+    <!-- CONTENT WRAPPER -->
+    <div class="flex flex-col min-h-screen transition-all duration-300 ease-in-out"
+         :class="isCollapsed ? 'lg:ml-[90px]' : 'lg:ml-[280px]'">
         
-        <header class="h-16 flex items-center justify-between px-6 bg-white border-b border-gray-200 shadow-sm sticky top-0 z-30">
+        <!-- HEADER / TOPBAR (SPMB MATCHING h-20 bg-white/80 backdrop-blur-md) -->
+        <header class="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between px-6 lg:px-8 sticky top-0 z-30">
             <div class="flex items-center gap-4">
-                <button @click="sidebarOpen = true" class="lg:hidden p-2 rounded-lg text-gray-500 hover:bg-gray-100">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                <!-- Mobile Menu Button -->
+                <button @click="mobileMenuOpen = true" 
+                        class="lg:hidden p-2 rounded-xl text-slate-600 hover:bg-slate-100 transition-colors">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+                        <line x1="3" y1="12" x2="21" y2="12"></line>
+                        <line x1="3" y1="6" x2="21" y2="6"></line>
+                        <line x1="3" y1="18" x2="21" y2="18"></line>
+                    </svg>
                 </button>
                 
-                @if (isset($header))
-                    <div class="font-bold text-gray-800 text-lg">{{ $header }}</div>
-                @else
-                    <h2 class="text-lg font-bold text-gray-800">Dashboard</h2>
-                @endif
+                <div class="flex flex-col">
+                    <h2 class="text-xl font-bold text-slate-800">
+                        @if (isset($header))
+                            {{ $header }}
+                        @else
+                            Halo, {{ Auth::user()->name ? explode(' ', Auth::user()->name)[0] : 'Admin' }}! 👋
+                        @endif
+                    </h2>
+                    <p class="text-xs text-slate-500 hidden md:block font-medium">
+                        {{ Auth::user()->role === 'admin' ? 'Tata Usaha Access' : 'Staff Access' }} • {{ Auth::user()->email ?? 'admin@kaffah.id' }}
+                    </p>
+                </div>
+            </div>
+
+            <!-- Profile Avatar Circle -->
+            <div class="flex items-center gap-4">
+                <a href="{{ route('profile.edit') }}" 
+                   title="Pengaturan Profil"
+                   class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-[#178BC1] font-black border-2 border-blue-200 overflow-hidden hover:ring-4 hover:ring-blue-100 transition-all cursor-pointer shadow-sm">
+                    {{ strtoupper(substr(Auth::user()->name ?? 'A', 0, 1)) }}
+                </a>
             </div>
         </header>
 
-        <main class="flex-1 p-6 lg:p-10">
-            <div class="w-full">
-                {{ $slot }}
-            </div>
+        <!-- MAIN BODY -->
+        <main class="flex-1 p-6 md:p-8 space-y-6">
+            {{ $slot }}
         </main>
 
-        <footer class="py-6 text-center text-xs text-gray-400">
-            &copy; {{ date('Y') }} Sistem Manajemen Sekolah. All rights reserved.
+        <!-- FOOTER (SPMB MATCHING) -->
+        <footer class="p-6 text-center text-xs text-slate-400 border-t border-slate-200">
+            &copy; {{ date('Y') }} Kaffah Islamic School - Secure System.
         </footer>
     </div>
 
+    <!-- NOTIFICATION & LOGOUT SCRIPT -->
     <script>
-        @if(session('success'))
-            Swal.fire({ icon: 'success', title: 'Berhasil!', text: "{{ session('success') }}", showConfirmButton: false, timer: 1500, background: '#fff', iconColor: '#0ea5e9' });
-        @endif
-        @if(session('error'))
-            Swal.fire({ icon: 'error', title: 'Gagal', text: "{{ session('error') }}", confirmButtonColor: '#ef4444' });
-        @endif
+        function confirmLogout() {
+            Swal.fire({
+                title: 'Keluar Aplikasi?',
+                text: 'Sesi Anda akan diakhiri.',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#178BC1',
+                cancelButtonColor: '#d33',
+                confirmButtonText: 'Ya, Logout',
+                cancelButtonText: 'Batal'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    document.getElementById('logout-form').submit();
+                }
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', function () {
+            @if(session('success'))
+                Swal.fire({ 
+                    icon: 'success', 
+                    title: 'Berhasil!', 
+                    text: "{{ session('success') }}", 
+                    confirmButtonColor: '#178BC1',
+                    timer: 2000 
+                });
+            @endif
+            @if(session('error'))
+                Swal.fire({ 
+                    icon: 'error', 
+                    title: 'Gagal', 
+                    text: "{{ session('error') }}", 
+                    confirmButtonColor: '#178BC1' 
+                });
+            @endif
+            @if(session('warning'))
+                Swal.fire({ 
+                    icon: 'warning', 
+                    title: 'Perhatian', 
+                    text: "{{ session('warning') }}", 
+                    confirmButtonColor: '#178BC1' 
+                });
+            @endif
+        });
     </script>
 </body>
 </html>

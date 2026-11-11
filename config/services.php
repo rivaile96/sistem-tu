@@ -37,7 +37,23 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Midtrans Configuration
+    | DOKU Payment Gateway Configuration (Official Single Gateway)
+    |--------------------------------------------------------------------------
+    */
+    'doku' => [
+        'client_id'        => env('DOKU_CLIENT_ID'),
+        'client_secret'    => env('DOKU_CLIENT_SECRET'),
+        'private_key'      => env('DOKU_PRIVATE_KEY'),
+        'public_key'       => env('DOKU_PUBLIC_KEY'),
+        'is_production'    => (bool) env('DOKU_IS_PRODUCTION', false),
+        'base_url'         => env('DOKU_API_BASE_URL', 'https://api-sandbox.doku.com'),
+        'notification_url' => env('DOKU_NOTIFICATION_URL', 'http://localhost:8001/api/doku/notification'),
+        'timeout_seconds'  => (int) env('DOKU_TIMEOUT_SECONDS', 30),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Midtrans Configuration (HISTORICAL ONLY - READ ONLY VERIFICATION)
     |--------------------------------------------------------------------------
     */
     'midtrans' => [

@@ -16,11 +16,18 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
-use Midtrans\Config;
-use Midtrans\Snap;
+use App\Models\PaymentOrder;
+use App\Models\PaymentOrderItem;
+use App\Services\Doku\DokuClient;
+use Illuminate\Support\Str;
 
 class ParentApiController extends Controller
 {
+    public function __construct(
+        private ?DokuClient $dokuClient = null
+    ) {
+        $this->dokuClient = $dokuClient ?? app(DokuClient::class);
+    }
     /**
      * Kembalikan seluruh profil siswa (anak) yang berhak diakses oleh principal saat ini.
      */
@@ -254,8 +261,8 @@ class ParentApiController extends Controller
                 ];
             });
 
-        // D. GABUNG SEMUA JADI SATU LIST
-        $allBills = $sppBills->merge($otherBills)->merge($canteenDebts);
+        // D. GABUNG SEMUA JADI SATU LIST (Gunakan toBase() agar aman saat menggabungkan array hasil mapping)
+        $allBills = $sppBills->toBase()->concat($otherBills->toBase())->concat($canteenDebts->toBase());
 
         // E. HITUNG TOTAL TAGIHAN
         $grandTotal = $allBills->sum('amount');
@@ -291,7 +298,7 @@ class ParentApiController extends Controller
     }
 
     // =================================================================
-    // 3. CREATE PAYMENT (Support SPP, Tagihan Sekolah & Kantin)
+    // 3. CREATE PAYMENT (DOKU Direct API & SNAP — Multi-bill & Single Bill)
     // =================================================================
     public function createPayment(Request $request)
     {
@@ -302,7 +309,27 @@ class ParentApiController extends Controller
             return $student;
         }
 
-        // --- SKENARIO MOBILE MULTI-BILL (bill_ids array) ---
+        $customerName = $student->name ?? $user?->name ?? 'Siswa Kaffah';
+        $customerPhone = $student->parent_phone ?? $user?->phone ?? '08123456789';
+        $paymentType = strtolower((string) $request->input('payment_type', 'bank_transfer'));
+        $bank = strtolower((string) $request->input('bank', 'bca'));
+        $store = strtolower((string) $request->input('store', ''));
+
+        // Normalize payment type for channel
+        if (in_array($paymentType, ['gopay', 'shopeepay', 'ovo', 'dana'], true)) {
+            // E-Wallet
+            $channel = $paymentType;
+        } elseif ($paymentType === 'qris') {
+            $channel = 'qris';
+        } elseif ($paymentType === 'cstore' || in_array($store, ['indomaret', 'alfamart'], true)) {
+            $channel = $store ?: 'indomaret';
+            $paymentType = 'cstore';
+        } else {
+            $paymentType = 'bank_transfer';
+            $channel = $bank ?: 'bca';
+        }
+
+        // --- SKENARIO 1: MULTI-BILL (bill_ids array) ---
         if ($request->has('bill_ids')) {
             $request->validate([
                 'bill_ids'     => 'required|array|min:1',
@@ -343,33 +370,152 @@ class ParentApiController extends Controller
                 ], 400);
             }
 
-            $firstBill = $bills->first();
-            $request->merge([
-                'id'   => $firstBill->id,
-                'type' => $firstBill->type === 'SPP' ? 'SPP' : 'BILL',
+            // 1. Expire order lama yang sudah lewat batas waktu
+            PaymentOrder::where('status', 'PENDING')
+                ->where('expiry_time', '<=', now())
+                ->update(['status' => 'EXPIRED']);
+
+            // 2. Deteksi sesi pembayaran aktif (overlap & reuse)
+            $activeConflictingOrders = PaymentOrder::where('status', 'PENDING')
+                ->where('expiry_time', '>', now())
+                ->whereHas('items', function ($q) use ($billIds) {
+                    $q->whereIn('bill_id', $billIds);
+                })
+                ->with('items')
+                ->get();
+
+            if ($activeConflictingOrders->isNotEmpty()) {
+                // Cari apakah ada order milik siswa ini yang bill_ids-nya cocok persis
+                $matchingOrder = $activeConflictingOrders->first(function ($ord) use ($student, $billIds) {
+                    if ((int) $ord->student_id !== (int) $student->id) {
+                        return false;
+                    }
+                    $orderBillIds = $ord->items->pluck('bill_id')->filter()->map(fn($id) => (int)$id)->sort()->values()->all();
+                    $reqBillIds = collect($billIds)->map(fn($id) => (int)$id)->sort()->values()->all();
+                    return $orderBillIds === $reqBillIds;
+                });
+
+                if ($matchingOrder && $activeConflictingOrders->count() === 1) {
+                    // REUSE active order (Idempoten, tidak panggil DOKU ulang)
+                    return response()->json([
+                        'status'          => 'success',
+                        'reused'          => true,
+                        'message'         => 'Sesi pembayaran aktif ditemukan. Melanjutkan transaksi yang ada.',
+                        'order_id'        => $matchingOrder->order_id,
+                        'amount'          => (int) $matchingOrder->amount,
+                        'payment_type'    => $matchingOrder->payment_channel === 'qris' ? 'qris' : 'va',
+                        'payment_method'  => $matchingOrder->payment_method,
+                        'payment_channel' => $matchingOrder->payment_channel,
+                        'va_number'       => $matchingOrder->va_number,
+                        'payment_code'    => $matchingOrder->payment_code,
+                        'qr_url'          => $matchingOrder->qr_url,
+                        'qr_content'      => $matchingOrder->qr_content,
+                        'payment_url'     => $matchingOrder->payment_url,
+                        'expiry_time'     => $matchingOrder->expiry_time?->toIso8601String(),
+                    ]);
+                }
+
+                // Jika overlap parsial atau beda kombinasi: tolak dengan 409 Conflict
+                $conflict = $activeConflictingOrders->first();
+                return response()->json([
+                    'status'          => 'error',
+                    'message'         => "Terdapat tagihan yang sedang dalam sesi pembayaran aktif (Order #{$conflict->order_id}). Selesaikan atau batalkan sesi pembayaran tersebut terlebih dahulu.",
+                    'active_order_id' => $conflict->order_id,
+                ], 409);
+            }
+
+            // Hitung gross_amount dari SUM database — TIDAK mempercayai nominal frontend
+            $grossAmount = (float) $bills->sum('amount');
+            $orderId = 'ORD-TU-B' . $bills->first()->id . '-' . date('Ymd') . '-' . Str::lower(Str::random(6));
+
+            // Call DOKU Gateway
+            try {
+                if ($channel === 'qris') {
+                    $dokuRes = $this->dokuClient->generateQris([
+                        'order_id'      => $orderId,
+                        'amount'        => $grossAmount,
+                        'customer_name' => $customerName,
+                    ]);
+                } else {
+                    $dokuRes = $this->dokuClient->createVirtualAccount([
+                        'order_id'       => $orderId,
+                        'amount'         => $grossAmount,
+                        'customer_name'  => $customerName,
+                        'customer_phone' => $customerPhone,
+                        'bank'           => $channel,
+                    ]);
+                }
+            } catch (\Throwable $e) {
+                Log::error('ParentApiController: DOKU gateway call failed', ['error' => $e->getMessage()]);
+                return response()->json(['status' => 'error', 'message' => 'Gagal menghubungkan ke payment gateway DOKU.'], 500);
+            }
+
+            // Simpan PaymentOrder & Items secara atomik
+            $order = DB::transaction(function () use ($student, $orderId, $grossAmount, $paymentType, $channel, $dokuRes, $bills) {
+                $order = PaymentOrder::create([
+                    'order_id'           => $orderId,
+                    'student_id'         => $student->id,
+                    'amount'             => $grossAmount,
+                    'currency'           => 'IDR',
+                    'provider'           => 'doku',
+                    'payment_method'     => 'DOKU',
+                    'payment_channel'    => $channel,
+                    'va_number'          => $dokuRes['va_number'] ?? null,
+                    'payment_code'       => $dokuRes['payment_code'] ?? null,
+                    'qr_content'         => $dokuRes['qr_content'] ?? null,
+                    'qr_url'             => $dokuRes['qr_url'] ?? null,
+                    'payment_url'        => $dokuRes['payment_url'] ?? null,
+                    'status'             => 'PENDING',
+                    'provider_reference' => $dokuRes['reference_id'] ?? null,
+                    'expiry_time'        => $dokuRes['expiry_time'] ?? now()->addDay(),
+                    'raw_response'       => $dokuRes,
+                ]);
+
+                foreach ($bills as $bill) {
+                    PaymentOrderItem::create([
+                        'payment_order_id' => $order->id,
+                        'bill_id'          => $bill->id,
+                        'pos_order_id'     => null,
+                        'amount'           => $bill->amount,
+                        'name'             => $bill->name,
+                    ]);
+
+                    $bill->update([
+                        'payment_method'    => 'DOKU',
+                    ]);
+                }
+
+                return $order;
+            });
+
+            return response()->json([
+                'status'       => 'success',
+                'order_id'     => $order->order_id,
+                'amount'       => (int) $order->amount,
+                'payment_type' => $paymentType,
+                'va_number'    => $dokuRes['va_number'] ?? null,
+                'payment_code' => $dokuRes['payment_code'] ?? null,
+                'qr_url'       => $dokuRes['qr_url'] ?? null,
+                'qr_content'   => $dokuRes['qr_content'] ?? null,
+                'payment_url'  => $dokuRes['payment_url'] ?? null,
+                'expiry_time'  => $dokuRes['expiry_time'] ?? null,
             ]);
         }
 
-        // Request wajib bawa: id & type (SPP/BILL/POS)
+        // --- SKENARIO 2: SINGLE BILL ATAU POS (Backward Compat) ---
         $request->validate([
             'id'   => 'required|integer',
             'type' => 'required|string|in:SPP,BILL,POS',
         ]);
 
-        $transactionDetails = [];
-        $customerDetails = [];
-        $orderIdPrefix = '';
-        $amount = 0;
-        $itemName = '';
-
-        // --- SKENARIO A: BAYAR TAGIHAN SEKOLAH (SPP/LAINNYA) ---
-        if ($request->type == 'BILL' || $request->type == 'SPP') {
+        if ($request->type === 'BILL' || $request->type === 'SPP') {
+            // Anti-IDOR check: cek apakah bill milik siswa lain
             $foreignBill = StudentBill::whereKey($request->id)
                 ->where('student_id', '!=', $student->id)
                 ->exists();
 
             if ($foreignBill) {
-                Log::warning('SEC-07A IDOR blocked on createPayment: foreign bill id', [
+                Log::warning('SEC-07A IDOR blocked on createPayment: foreign single bill', [
                     'student_id' => $student->id,
                     'bill_id'    => $request->id,
                     'ip'         => $request->ip(),
@@ -381,32 +527,134 @@ class ParentApiController extends Controller
                 ], 403);
             }
 
-            $bill = StudentBill::with('student')
+            $bill = StudentBill::whereKey($request->id)
                 ->where('student_id', $student->id)
-                ->whereKey($request->id)
                 ->first();
-            
-            if (!$bill || $bill->status == 'PAID') {
-                return response()->json(['message' => 'Tagihan tidak valid atau sudah lunas'], 400);
-            }
-            
-            $amount = $bill->amount;
-            $orderIdPrefix = 'BILL'; // Kode Unik Bill
-            $itemName = substr($bill->name, 0, 50);
-            
-            $customerDetails = [
-                'first_name' => $student->name ?? $user?->name,
-                'phone' => $student->parent_phone ?? $user?->phone,
-            ];
 
-        // --- SKENARIO B: BAYAR HUTANG KANTIN (POS) ---
-        } elseif ($request->type == 'POS') {
+            if (!$bill || $bill->status === 'PAID') {
+                return response()->json([
+                    'status'  => 'error',
+                    'message' => 'Tagihan tidak valid atau sudah lunas',
+                ], 400);
+            }
+
+            // Deteksi sesi pembayaran aktif (overlap & reuse) untuk single bill
+            $billId = (int) $bill->id;
+            $activeOrder = PaymentOrder::where('status', 'PENDING')
+                ->where('expiry_time', '>', now())
+                ->whereHas('items', function ($q) use ($billId) {
+                    $q->where('bill_id', $billId);
+                })
+                ->with('items')
+                ->first();
+
+            if ($activeOrder) {
+                if ((int) $activeOrder->student_id === (int) $student->id && $activeOrder->items->count() === 1) {
+                    return response()->json([
+                        'status'          => 'success',
+                        'reused'          => true,
+                        'message'         => 'Sesi pembayaran aktif ditemukan. Melanjutkan transaksi yang ada.',
+                        'order_id'        => $activeOrder->order_id,
+                        'amount'          => (int) $activeOrder->amount,
+                        'payment_type'    => $activeOrder->payment_channel === 'qris' ? 'qris' : 'va',
+                        'payment_method'  => $activeOrder->payment_method,
+                        'payment_channel' => $activeOrder->payment_channel,
+                        'va_number'       => $activeOrder->va_number,
+                        'payment_code'    => $activeOrder->payment_code,
+                        'qr_url'          => $activeOrder->qr_url,
+                        'qr_content'      => $activeOrder->qr_content,
+                        'payment_url'     => $activeOrder->payment_url,
+                        'expiry_time'     => $activeOrder->expiry_time?->toIso8601String(),
+                    ]);
+                }
+
+                return response()->json([
+                    'status'          => 'error',
+                    'message'         => "Tagihan sedang dalam sesi pembayaran aktif (Order #{$activeOrder->order_id}). Selesaikan atau batalkan sesi pembayaran tersebut terlebih dahulu.",
+                    'active_order_id' => $activeOrder->order_id,
+                ], 409);
+            }
+
+            $grossAmount = (float) $bill->amount;
+            $orderId = 'ORD-TU-B' . $bill->id . '-' . date('Ymd') . '-' . Str::lower(Str::random(6));
+
+            try {
+                if ($channel === 'qris') {
+                    $dokuRes = $this->dokuClient->generateQris([
+                        'order_id'      => $orderId,
+                        'amount'        => $grossAmount,
+                        'customer_name' => $customerName,
+                    ]);
+                } else {
+                    $dokuRes = $this->dokuClient->createVirtualAccount([
+                        'order_id'       => $orderId,
+                        'amount'         => $grossAmount,
+                        'customer_name'  => $customerName,
+                        'customer_phone' => $customerPhone,
+                        'bank'           => $channel,
+                    ]);
+                }
+            } catch (\Throwable $e) {
+                Log::error('ParentApiController: DOKU gateway call failed', ['error' => $e->getMessage()]);
+                return response()->json(['status' => 'error', 'message' => 'Gagal menghubungkan ke payment gateway DOKU.'], 500);
+            }
+
+            $order = DB::transaction(function () use ($student, $orderId, $grossAmount, $paymentType, $channel, $dokuRes, $bill) {
+                $order = PaymentOrder::create([
+                    'order_id'           => $orderId,
+                    'student_id'         => $student->id,
+                    'amount'             => $grossAmount,
+                    'currency'           => 'IDR',
+                    'provider'           => 'doku',
+                    'payment_method'     => 'DOKU',
+                    'payment_channel'    => $channel,
+                    'va_number'          => $dokuRes['va_number'] ?? null,
+                    'payment_code'       => $dokuRes['payment_code'] ?? null,
+                    'qr_content'         => $dokuRes['qr_content'] ?? null,
+                    'qr_url'             => $dokuRes['qr_url'] ?? null,
+                    'payment_url'        => $dokuRes['payment_url'] ?? null,
+                    'status'             => 'PENDING',
+                    'provider_reference' => $dokuRes['reference_id'] ?? null,
+                    'expiry_time'        => $dokuRes['expiry_time'] ?? now()->addDay(),
+                    'raw_response'       => $dokuRes,
+                ]);
+
+                PaymentOrderItem::create([
+                    'payment_order_id' => $order->id,
+                    'bill_id'          => $bill->id,
+                    'pos_order_id'     => null,
+                    'amount'           => $bill->amount,
+                    'name'             => $bill->name,
+                ]);
+
+                $bill->update([
+                    'midtrans_order_id' => $orderId,
+                    'payment_method'    => 'DOKU',
+                ]);
+
+                return $order;
+            });
+
+            return response()->json([
+                'status'       => 'success',
+                'order_id'     => $order->order_id,
+                'amount'       => (int) $order->amount,
+                'payment_type' => $paymentType,
+                'va_number'    => $dokuRes['va_number'] ?? null,
+                'payment_code' => $dokuRes['payment_code'] ?? null,
+                'qr_url'       => $dokuRes['qr_url'] ?? null,
+                'qr_content'   => $dokuRes['qr_content'] ?? null,
+                'payment_url'  => $dokuRes['payment_url'] ?? null,
+                'expiry_time'  => $dokuRes['expiry_time'] ?? null,
+            ]);
+
+        } elseif ($request->type === 'POS') {
             $foreignPos = PosOrder::whereKey($request->id)
                 ->where('student_id', '!=', $student->id)
                 ->exists();
 
             if ($foreignPos) {
-                Log::warning('SEC-07A IDOR blocked on createPayment: foreign pos id', [
+                Log::warning('SEC-07A IDOR blocked on createPayment: foreign pos_id', [
                     'student_id' => $student->id,
                     'pos_id'     => $request->id,
                     'ip'         => $request->ip(),
@@ -418,135 +666,128 @@ class ParentApiController extends Controller
                 ], 403);
             }
 
-            $pos = PosOrder::with('student')
+            $pos = PosOrder::whereKey($request->id)
                 ->where('student_id', $student->id)
-                ->whereKey($request->id)
                 ->first();
-            
-            if (!$pos || $pos->payment_status == 'PAID') {
-                return response()->json(['message' => 'Transaksi tidak valid atau sudah lunas'], 400);
+
+            if (!$pos || $pos->payment_status === 'PAID') {
+                return response()->json([
+                    'status'  => 'error',
+                    'message' => 'Transaksi tidak valid atau sudah lunas',
+                ], 400);
             }
 
-            $amount = $pos->total_amount;
-            $orderIdPrefix = 'POS'; // Kode Unik POS
-            $itemName = "Jajan Kantin " . $pos->created_at->format('d/m');
+            // Deteksi sesi pembayaran aktif (overlap & reuse) untuk POS
+            $activePosOrder = PaymentOrder::where('status', 'PENDING')
+                ->where('expiry_time', '>', now())
+                ->whereHas('items', function ($q) use ($pos) {
+                    $q->where('pos_order_id', $pos->id);
+                })
+                ->first();
 
-            $customerDetails = [
-                'first_name' => $student->name ?? $user?->name,
-                'phone' => $student->parent_phone ?? $user?->phone,
-            ];
+            if ($activePosOrder) {
+                if ((int) $activePosOrder->student_id === (int) $student->id) {
+                    return response()->json([
+                        'status'          => 'success',
+                        'reused'          => true,
+                        'message'         => 'Sesi pembayaran aktif ditemukan. Melanjutkan transaksi yang ada.',
+                        'order_id'        => $activePosOrder->order_id,
+                        'amount'          => (int) $activePosOrder->amount,
+                        'payment_type'    => $activePosOrder->payment_channel === 'qris' ? 'qris' : 'va',
+                        'payment_method'  => $activePosOrder->payment_method,
+                        'payment_channel' => $activePosOrder->payment_channel,
+                        'va_number'       => $activePosOrder->va_number,
+                        'payment_code'    => $activePosOrder->payment_code,
+                        'qr_url'          => $activePosOrder->qr_url,
+                        'qr_content'      => $activePosOrder->qr_content,
+                        'payment_url'     => $activePosOrder->payment_url,
+                        'expiry_time'     => $activePosOrder->expiry_time?->toIso8601String(),
+                    ]);
+                }
 
-        } else {
-            return response()->json(['message' => 'Tipe pembayaran tidak dikenal'], 400);
-        }
+                return response()->json([
+                    'status'          => 'error',
+                    'message'         => "Transaksi kantin sedang dalam sesi pembayaran aktif (Order #{$activePosOrder->order_id}). Selesaikan atau batalkan sesi pembayaran tersebut terlebih dahulu.",
+                    'active_order_id' => $activePosOrder->order_id,
+                ], 409);
+            }
 
-        // --- KONFIGURASI MIDTRANS ---
-        Config::$serverKey = config('services.midtrans.server_key');
-        Config::$isProduction = config('services.midtrans.is_production', false);
-        Config::$isSanitized = true;
-        Config::$is3ds = true;
+            $grossAmount = (float) $pos->total_amount;
+            $orderId = 'ORD-TU-POS' . $pos->id . '-' . date('Ymd') . '-' . Str::lower(Str::random(6));
 
-        // Bikin Order ID Unik: TIPE-ID-TIMESTAMP 
-        // Contoh: POS-15-17628392 (Biar ID 15 di SPP dan ID 15 di POS gak bentrok)
-        $orderId = $orderIdPrefix . '-' . $request->id . '-' . time();
+            try {
+                if ($channel === 'qris') {
+                    $dokuRes = $this->dokuClient->generateQris([
+                        'order_id'      => $orderId,
+                        'amount'        => $grossAmount,
+                        'customer_name' => $customerName,
+                    ]);
+                } else {
+                    $dokuRes = $this->dokuClient->createVirtualAccount([
+                        'order_id'       => $orderId,
+                        'amount'         => $grossAmount,
+                        'customer_name'  => $customerName,
+                        'customer_phone' => $customerPhone,
+                        'bank'           => $channel,
+                    ]);
+                }
+            } catch (\Throwable $e) {
+                Log::error('ParentApiController: DOKU gateway call failed', ['error' => $e->getMessage()]);
+                return response()->json(['status' => 'error', 'message' => 'Gagal menghubungkan ke payment gateway DOKU.'], 500);
+            }
 
-        $params = [
-            'transaction_details' => [
-                'order_id' => $orderId,
-                'gross_amount' => (int) $amount,
-            ],
-            'customer_details' => $customerDetails,
-            'item_details' => [[
-                'id' => $request->id,
-                'price' => (int) $amount,
-                'quantity' => 1,
-                'name' => $itemName
-            ]]
-        ];
-
-        try {
-            // Minta Token ke Midtrans
-            $snapToken = Snap::getSnapToken($params);
-
-            // Simpan order_id ke bill — webhook handler mencari bill via midtrans_order_id.
-            // amount diambil server-side dari bill, tidak dipercaya dari frontend.
-            if (isset($bill)) {
-                $bill->update([
-                    'midtrans_order_id' => $orderId,
-                    'payment_token'     => $snapToken,
-                    'status'            => 'PENDING',
+            $order = DB::transaction(function () use ($student, $orderId, $grossAmount, $paymentType, $channel, $dokuRes, $pos) {
+                $order = PaymentOrder::create([
+                    'order_id'           => $orderId,
+                    'student_id'         => $student->id,
+                    'amount'             => $grossAmount,
+                    'currency'           => 'IDR',
+                    'provider'           => 'doku',
+                    'payment_method'     => 'DOKU',
+                    'payment_channel'    => $channel,
+                    'va_number'          => $dokuRes['va_number'] ?? null,
+                    'payment_code'       => $dokuRes['payment_code'] ?? null,
+                    'qr_content'         => $dokuRes['qr_content'] ?? null,
+                    'qr_url'             => $dokuRes['qr_url'] ?? null,
+                    'payment_url'        => $dokuRes['payment_url'] ?? null,
+                    'status'             => 'PENDING',
+                    'provider_reference' => $dokuRes['reference_id'] ?? null,
+                    'expiry_time'        => $dokuRes['expiry_time'] ?? now()->addDay(),
+                    'raw_response'       => $dokuRes,
                 ]);
-            }
+
+                PaymentOrderItem::create([
+                    'payment_order_id' => $order->id,
+                    'bill_id'          => null,
+                    'pos_order_id'     => $pos->id,
+                    'amount'           => $pos->total_amount,
+                    'name'             => 'Jajan Kantin ' . $pos->created_at?->format('d/m'),
+                ]);
+
+                $pos->update([
+                    'payment_status'   => 'PENDING',
+                    'transaction_code' => $orderId,
+                    'payment_method'   => 'DOKU',
+                ]);
+
+                return $order;
+            });
 
             return response()->json([
-                'snap_token' => $snapToken,
-                'order_id'   => $orderId,
+                'status'       => 'success',
+                'order_id'     => $order->order_id,
+                'amount'       => (int) $order->amount,
+                'payment_type' => $paymentType,
+                'va_number'    => $dokuRes['va_number'] ?? null,
+                'payment_code' => $dokuRes['payment_code'] ?? null,
+                'qr_url'       => $dokuRes['qr_url'] ?? null,
+                'qr_content'   => $dokuRes['qr_content'] ?? null,
+                'payment_url'  => $dokuRes['payment_url'] ?? null,
+                'expiry_time'  => $dokuRes['expiry_time'] ?? null,
             ]);
-
-        } catch (\Exception $e) {
-            return response()->json(['message' => $e->getMessage()], 500);
-        }
-    }
-
-    // =================================================================
-    // 4. WEBHOOK (Callback Midtrans - Support Multi Table)
-    // =================================================================
-    public function callback(Request $request)
-    {
-        $serverKey = config('services.midtrans.server_key');
-        
-        // 1. Validasi Signature Key (Wajib demi keamanan)
-        $hashed = hash("sha512", $request->order_id.$request->status_code.$request->gross_amount.$serverKey);
-        
-        if ($hashed == $request->signature_key) {
-            
-            // 2. Cek Status Transaksi (Settlement / Capture = Sukses)
-            if ($request->transaction_status == 'capture' || $request->transaction_status == 'settlement') {
-                
-                // Pecah Order ID: "POS-15-17628392"
-                $parts = explode('-', $request->order_id);
-                $type = $parts[0]; // "POS" atau "BILL"
-                $id = $parts[1];   // "15"
-
-                try {
-                    DB::beginTransaction();
-
-                    // A. UPDATE TABEL TAGIHAN SEKOLAH
-                    if ($type == 'BILL') {
-                        $bill = StudentBill::find($id);
-                        if ($bill) {
-                            $bill->update([
-                                'status' => 'PAID',
-                                'payment_method' => 'MIDTRANS',
-                                'payment_token' => null, // Hapus token
-                                'updated_at' => now()
-                            ]);
-                        }
-
-                    // B. UPDATE TABEL POS (KANTIN)
-                    } elseif ($type == 'POS') {
-                        $pos = PosOrder::find($id);
-                        if ($pos) {
-                            $pos->update([
-                                'payment_status' => 'PAID',
-                                'payment_method' => 'MIDTRANS', 
-                                'paid_amount' => $pos->total_amount, // Anggap lunas
-                                'change_amount' => 0,
-                                'updated_at' => now()
-                            ]);
-                        }
-                    }
-
-                    DB::commit();
-                } catch (\Exception $e) {
-                    DB::rollBack();
-                    // Log error jika perlu
-                }
-            }
         }
 
-        // Selalu return OK 200 ke Midtrans
-        return response()->json(['status' => 'ok']);
+        return response()->json(['status' => 'error', 'message' => 'Tipe pembayaran tidak dikenal'], 400);
     }
 
     /**
@@ -567,12 +808,13 @@ class ParentApiController extends Controller
             ->get()
             ->map(function ($bill) {
                 return [
-                    'id'     => $bill->id,
-                    'type'   => $bill->type,
-                    'name'   => $bill->name,
-                    'amount' => $bill->amount,
-                    'status' => $bill->status,
-                    'date'   => $bill->created_at->format('d M Y'),
+                    'id'       => $bill->id,
+                    'type'     => $bill->type,
+                    'name'     => $bill->name,
+                    'amount'   => $bill->amount,
+                    'status'   => $bill->status,
+                    'due_date' => $bill->due_date ? \Carbon\Carbon::parse($bill->due_date)->format('Y-m-d') : null,
+                    'date'     => $bill->created_at ? $bill->created_at->format('d M Y') : null,
                 ];
             });
 
@@ -607,7 +849,7 @@ class ParentApiController extends Controller
                     'type'   => strtolower((string) $bill->type),
                     'amount' => (int) $bill->amount,
                     'status' => $bill->status === 'PAID' ? 'success' : 'pending',
-                    'method' => $bill->payment_method ?? 'MIDTRANS',
+                    'method' => $bill->payment_method ?? 'DOKU',
                     'date'   => $dateSource?->format('d M Y'),
                 ];
             });
@@ -630,6 +872,36 @@ class ParentApiController extends Controller
             return $student;
         }
 
+        // 1. Cek PaymentOrder (DOKU & Multi-bill)
+        $paymentOrder = PaymentOrder::where('student_id', $student->id)
+            ->where('order_id', $orderId)
+            ->with(['items.bill', 'items.posOrder'])
+            ->first();
+
+        if ($paymentOrder) {
+            // Cek kedaluwarsa 24 jam
+            if ($paymentOrder->status === 'PENDING' && $paymentOrder->expiry_time && $paymentOrder->expiry_time->isPast()) {
+                $paymentOrder->update(['status' => 'EXPIRED']);
+                foreach ($paymentOrder->items as $item) {
+                    if ($item->bill && $item->bill->status !== 'PAID') {
+                        $item->bill->update(['status' => 'UNPAID', 'midtrans_order_id' => null]);
+                    }
+                    if ($item->posOrder && $item->posOrder->payment_status !== 'PAID') {
+                        $item->posOrder->update(['payment_status' => 'UNPAID', 'transaction_code' => null]);
+                    }
+                }
+            }
+
+            return response()->json([
+                'status'         => 'success',
+                'order_id'       => $orderId,
+                'payment_status' => $paymentOrder->status,
+                'amount'         => (int) $paymentOrder->amount,
+                'expiry_time'    => $paymentOrder->expiry_time?->toIso8601String(),
+            ]);
+        }
+
+        // 2. Cek StudentBill (legacy / fallback)
         $bill = StudentBill::where('student_id', $student->id)
             ->where('midtrans_order_id', $orderId)
             ->first();
@@ -642,6 +914,7 @@ class ParentApiController extends Controller
             ]);
         }
 
+        // 3. Cek PosOrder (Kantin)
         $pos = PosOrder::where('student_id', $student->id)
             ->where('transaction_code', $orderId)
             ->first();
@@ -655,6 +928,9 @@ class ParentApiController extends Controller
         }
 
         // Anti-IDOR: cek apakah order_id milik siswa lain
+        $foreignOrder = PaymentOrder::where('order_id', $orderId)
+            ->where('student_id', '!=', $student->id)
+            ->exists();
         $foreignBill = StudentBill::where('midtrans_order_id', $orderId)
             ->where('student_id', '!=', $student->id)
             ->exists();
@@ -662,7 +938,7 @@ class ParentApiController extends Controller
             ->where('student_id', '!=', $student->id)
             ->exists();
 
-        if ($foreignBill || $foreignPos) {
+        if ($foreignOrder || $foreignBill || $foreignPos) {
             Log::warning('SEC-07A IDOR blocked on checkStatus: foreign order_id', [
                 'student_id' => $student->id,
                 'order_id'   => $orderId,
@@ -682,6 +958,218 @@ class ParentApiController extends Controller
     }
 
     /**
+     * POST /api/finance/payment/cancel
+     * Batalkan sesi pembayaran yang sedang aktif (PENDING).
+     *
+     * Alur State Machine:
+     * 1. Validasi kepemilikan (Anti-IDOR) & status awal (wajib PENDING).
+     * 2. Tandai CANCEL_REQUESTED dengan row lock atomik.
+     * 3. Hubungi provider payment gateway (DOKU) untuk membatalkan tagihan.
+     * 4. Evaluasi ulang state:
+     *    - Bila webhook tiba duluan dan status sudah PAID -> PAID MENANG! (batalkan pembatalan).
+     *    - Bila provider sukses membatalkan -> status CANCELLED, tagihan dibebaskan (UNPAID).
+     *    - Bila provider gagal/timeout -> kembalikan ke PENDING.
+     */
+    public function cancelPayment(Request $request): JsonResponse
+    {
+        $student = $this->resolveAuthorizedStudentOrFail($request);
+
+        if ($student instanceof JsonResponse) {
+            return $student;
+        }
+
+        $request->validate([
+            'order_id' => 'required|string',
+        ]);
+
+        $orderId = (string) $request->input('order_id');
+
+        // Anti-IDOR: pastikan order milik siswa ini
+        $foreignOrder = PaymentOrder::where('order_id', $orderId)
+            ->where('student_id', '!=', $student->id)
+            ->exists();
+
+        if ($foreignOrder) {
+            Log::warning('SEC-07A IDOR blocked on cancelPayment: foreign order_id', [
+                'student_id' => $student->id,
+                'order_id'   => $orderId,
+                'ip'         => $request->ip(),
+            ]);
+
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Akses ditolak: Order bukan milik siswa ini.',
+            ], 403);
+        }
+
+        $order = PaymentOrder::where('order_id', $orderId)
+            ->where('student_id', $student->id)
+            ->first();
+
+        if (!$order) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Order pembayaran tidak ditemukan.',
+            ], 404);
+        }
+
+        if ($order->status === 'PAID') {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Order sudah lunas, tidak dapat dibatalkan.',
+            ], 400);
+        }
+
+        if ($order->status === 'CANCELLED') {
+            return response()->json([
+                'status'   => 'success',
+                'message'  => 'Order sudah dibatalkan.',
+                'order_id' => $order->order_id,
+            ]);
+        }
+
+        if ($order->status !== 'PENDING') {
+            return response()->json([
+                'status'  => 'error',
+                'message' => "Order dengan status {$order->status} tidak dapat dibatalkan.",
+            ], 400);
+        }
+
+        // 1. Set CANCEL_REQUESTED secara atomik
+        DB::transaction(function () use ($order) {
+            $locked = PaymentOrder::where('id', $order->id)->lockForUpdate()->first();
+            if ($locked && $locked->status === 'PENDING') {
+                $locked->update(['status' => 'CANCEL_REQUESTED']);
+            }
+        });
+
+        // 2. Panggil pembatalan ke provider DOKU
+        $cancelSuccess = false;
+        $cancelMessage = 'Gagal membatalkan transaksi pada payment gateway. Transaksi masih aktif dan dapat dibayar menggunakan kode/VA yang ada.';
+        $cancellationStatus = 'FAILED';
+
+        try {
+            $result = $this->dokuClient->cancelOrder($order);
+            $cancelSuccess = (bool) ($result['success'] ?? false);
+            $cancellationStatus = $result['status'] ?? ($cancelSuccess ? 'CANCELLED' : 'REJECTED');
+            if (!$cancelSuccess && !empty($result['raw']['message'])) {
+                $cancelMessage = 'Pembatalan ditolak oleh payment gateway: ' . $result['raw']['message'];
+            }
+        } catch (\Throwable $e) {
+            Log::error('ParentApiController: cancelOrder provider error', [
+                'order_id' => $order->order_id,
+                'error'    => $e->getMessage(),
+            ]);
+            $cancelSuccess = false;
+            $cancellationStatus = 'UNCERTAIN';
+        }
+
+        // 3. Re-lock dan evaluasi hasil
+        return DB::transaction(function () use ($order, $cancelSuccess, $cancelMessage, $cancellationStatus) {
+            $locked = PaymentOrder::where('id', $order->id)
+                ->with(['items.bill', 'items.posOrder'])
+                ->lockForUpdate()
+                ->first();
+
+            // Jika webhook tiba saat pembatalan dan sudah PAID: PAID MENANG!
+            if ($locked->status === 'PAID') {
+                return response()->json([
+                    'status'   => 'error',
+                    'message'  => 'Pembayaran telah diterima oleh gateway. Pembatalan dibatalkan.',
+                    'order_id' => $locked->order_id,
+                ], 400);
+            }
+
+            if (!$cancelSuccess) {
+                // Revert status ke PENDING (Tagihan tetap terkunci di sesi pembayaran aktif)
+                $locked->update(['status' => 'PENDING']);
+                return response()->json([
+                    'status'              => 'error',
+                    'message'             => $cancelMessage,
+                    'cancellation_status' => $cancellationStatus,
+                    'order_id'            => $locked->order_id,
+                ], 400);
+            }
+
+            // Sukses batalkan: transisi ke CANCELLED & bebaskan tagihan
+            $locked->update(['status' => 'CANCELLED']);
+
+            foreach ($locked->items as $item) {
+                if ($item->bill && $item->bill->status !== 'PAID') {
+                    $item->bill->update([
+                        'status'            => 'UNPAID',
+                        'midtrans_order_id' => null,
+                    ]);
+                }
+                if ($item->posOrder && $item->posOrder->payment_status !== 'PAID') {
+                    $item->posOrder->update([
+                        'payment_status'   => 'UNPAID',
+                        'transaction_code' => null,
+                    ]);
+                }
+            }
+
+            Log::info('ParentApiController: order berhasil dibatalkan oleh pengguna', [
+                'order_id'   => $locked->order_id,
+                'student_id' => $locked->student_id,
+            ]);
+
+            return response()->json([
+                'status'   => 'success',
+                'message'  => 'Sesi pembayaran berhasil dibatalkan. Anda dapat memilih metode pembayaran baru.',
+                'order_id' => $locked->order_id,
+            ]);
+        });
+    }
+
+    /**
+     * GET /api/finance/payment/active
+     * Ambil sesi pembayaran aktif (PENDING dan belum expired) milik siswa login jika ada.
+     */
+    public function getActivePayment(Request $request): JsonResponse
+    {
+        $student = $this->resolveAuthorizedStudentOrFail($request);
+
+        if ($student instanceof JsonResponse) {
+            return $student;
+        }
+
+        $activeOrder = PaymentOrder::where('student_id', $student->id)
+            ->where('status', 'PENDING')
+            ->where('expiry_time', '>', now())
+            ->with('items')
+            ->latest()
+            ->first();
+
+        if (!$activeOrder) {
+            return response()->json([
+                'status'     => 'success',
+                'has_active' => false,
+                'data'       => null,
+            ]);
+        }
+
+        return response()->json([
+            'status'     => 'success',
+            'has_active' => true,
+            'data'       => [
+                'order_id'          => $activeOrder->order_id,
+                'amount'            => (int) $activeOrder->amount,
+                'payment_method'    => $activeOrder->payment_method,
+                'payment_channel'   => $activeOrder->payment_channel,
+                'va_number'         => $activeOrder->va_number,
+                'payment_code'      => $activeOrder->payment_code,
+                'qr_url'            => $activeOrder->qr_url,
+                'qr_content'        => $activeOrder->qr_content,
+                'payment_url'       => $activeOrder->payment_url,
+                'expiry_time'       => $activeOrder->expiry_time?->toIso8601String(),
+                'remaining_seconds' => max(0, now()->diffInSeconds($activeOrder->expiry_time, false)),
+                'bill_ids'          => $activeOrder->items->pluck('bill_id')->filter()->values(),
+            ],
+        ]);
+    }
+
+    /**
      * GET /api/finance/payment/invoice/{order_id}
      * Detail invoice pembayaran yang di-scope ke student_profiles.id milik siswa login.
      */
@@ -694,6 +1182,38 @@ class ParentApiController extends Controller
             return $student;
         }
 
+        // 1. Cek PaymentOrder (DOKU & Multi-bill)
+        $paymentOrder = PaymentOrder::with('items')
+            ->where('student_id', $student->id)
+            ->where('order_id', $orderId)
+            ->first();
+
+        if ($paymentOrder) {
+            $paidAtSource = $paymentOrder->paid_at ?? $paymentOrder->updated_at ?? $paymentOrder->created_at;
+            $items = $paymentOrder->items->map(function ($item) {
+                return [
+                    'name'   => $item->name,
+                    'amount' => (int) $item->amount,
+                ];
+            })->values()->all();
+
+            return response()->json([
+                'status' => 'success',
+                'data'   => [
+                    'order_id'       => $paymentOrder->order_id,
+                    'student_name'   => $student->name ?? $user?->name,
+                    'nis'            => $student->nis,
+                    'class_name'     => $student->class_name,
+                    'paid_at'        => $paidAtSource?->format('d M Y, H:i'),
+                    'payment_method' => $paymentOrder->payment_method ?? 'DOKU',
+                    'status'         => $paymentOrder->status,
+                    'total_amount'   => (int) $paymentOrder->amount,
+                    'items'          => $items,
+                ],
+            ]);
+        }
+
+        // 2. Cek StudentBill (legacy / fallback)
         $bill = StudentBill::where('student_id', $student->id)
             ->where('midtrans_order_id', $orderId)
             ->first();
@@ -706,6 +1226,10 @@ class ParentApiController extends Controller
 
         if (!$bill) {
             // Anti-IDOR: cek apakah invoice milik siswa lain
+            $foreignOrder = PaymentOrder::where('order_id', $orderId)
+                ->where('student_id', '!=', $student->id)
+                ->exists();
+
             $foreignBill = StudentBill::where('midtrans_order_id', $orderId)
                 ->where('student_id', '!=', $student->id)
                 ->exists();
@@ -716,7 +1240,7 @@ class ParentApiController extends Controller
                     ->exists();
             }
 
-            if ($foreignBill) {
+            if ($foreignOrder || $foreignBill) {
                 Log::warning('SEC-07A IDOR blocked on getInvoiceDetail: foreign order_id/bill_id', [
                     'student_id' => $student->id,
                     'order_id'   => $orderId,
@@ -745,7 +1269,7 @@ class ParentApiController extends Controller
                 'nis'            => $student->nis,
                 'class_name'     => $student->class_name,
                 'paid_at'        => $paidAtSource?->format('d M Y, H:i'),
-                'payment_method' => $bill->payment_method ?? 'MIDTRANS',
+                'payment_method' => $bill->payment_method ?? 'DOKU',
                 'status'         => $bill->status,
                 'total_amount'   => (int) $bill->amount,
                 'items'          => [

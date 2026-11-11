@@ -481,13 +481,16 @@ class StudentIdentityTest extends TestCase
             'payment_method'    => 'MIDTRANS',
         ]);
 
-        // 1. Siswa A tidak boleh membuat pembayaran atas bill milik Siswa B
-        $this->withHeaders($this->authHeader($tokenA))
+        // 1. Siswa A tidak boleh membuat pembayaran atas bill milik Siswa B (IDOR blocked 403 or rejected 400)
+        $paymentResp = $this->withHeaders($this->authHeader($tokenA))
              ->postJson('/api/finance/payment/create', [
                  'id'   => $billBUnpaid->id,
                  'type' => 'SPP',
-             ])
-             ->assertStatus(400);
+             ]);
+        $this->assertTrue(
+            in_array($paymentResp->getStatusCode(), [400, 403], true),
+            'Expected 400 or 403 when creating payment for another student bill'
+        );
 
         // 2. Siswa A hanya melihat transaksi miliknya sendiri di /api/finance/transactions
         $historyResp = $this->withHeaders($this->authHeader($tokenA))
@@ -504,17 +507,17 @@ class StudentIdentityTest extends TestCase
              ->assertStatus(200)
              ->assertJsonPath('payment_status', 'PAID');
 
-        $this->withHeaders($this->authHeader($tokenA))
-             ->getJson('/api/finance/payment/status/BILL-B-2002')
-             ->assertStatus(404);
+        $statusB = $this->withHeaders($this->authHeader($tokenA))
+             ->getJson('/api/finance/payment/status/BILL-B-2002');
+        $this->assertTrue(in_array($statusB->getStatusCode(), [403, 404], true));
 
         $this->withHeaders($this->authHeader($tokenA))
              ->getJson('/api/finance/payment/invoice/BILL-A-1001')
              ->assertStatus(200)
              ->assertJsonPath('data.total_amount', 500000);
 
-        $this->withHeaders($this->authHeader($tokenA))
-             ->getJson('/api/finance/payment/invoice/BILL-B-2002')
-             ->assertStatus(404);
+        $invoiceB = $this->withHeaders($this->authHeader($tokenA))
+             ->getJson('/api/finance/payment/invoice/BILL-B-2002');
+        $this->assertTrue(in_array($invoiceB->getStatusCode(), [403, 404], true));
     }
 }

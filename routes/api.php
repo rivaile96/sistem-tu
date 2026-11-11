@@ -4,10 +4,17 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\ParentApiController;
 use App\Http\Controllers\Api\FinanceTokenController;
+use App\Http\Controllers\DokuWebhookController;
 use App\Http\Controllers\MidtransController;
 
 // ============================================================
-// 1. PUBLIC — Midtrans Webhook
+// 1. PUBLIC — DOKU Webhook & Notification (Primary Official Gateway)
+// ============================================================
+Route::post('/doku/notification', [DokuWebhookController::class, 'handle']);
+Route::post('/doku/webhook',      [DokuWebhookController::class, 'handle']);
+
+// ============================================================
+// 1B. PUBLIC — Midtrans Webhook (Historical Settlement Only)
 // ============================================================
 Route::post('/midtrans/webhook',   [MidtransController::class, 'callback']);
 Route::post('/midtrans-callback',  [MidtransController::class, 'callback']); // legacy alias
@@ -25,6 +32,9 @@ Route::middleware(['auth:sanctum', 'role:student,parent,ortu'])
              ->middleware('throttle:10,1');
         Route::post('/pay',                      [ParentApiController::class, 'createPayment'])
              ->middleware('throttle:10,1');
+        Route::post('/payment/cancel',           [ParentApiController::class, 'cancelPayment'])
+             ->middleware('throttle:10,1');
+        Route::get('/payment/active',            [ParentApiController::class, 'getActivePayment']);
         Route::get('/transactions',              [ParentApiController::class, 'getTransactionHistory']);
         Route::get('/payment/status/{order_id}', [ParentApiController::class, 'checkStatus']);
         Route::get('/pay/status/{order_id}',     [ParentApiController::class, 'checkStatus']);

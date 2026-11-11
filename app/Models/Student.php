@@ -23,6 +23,10 @@ class Student extends Model
         'pin',
     ];
 
+    protected $appends = [
+        'name',
+    ];
+
     // Casting tipe data otomatis
     protected $casts = [
         'created_at'  => 'datetime',

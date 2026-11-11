@@ -46,7 +46,7 @@ class BillController extends Controller
         if ($request->search) {
             $query->where(function($q) use ($request) {
                 $q->where('name', 'like', '%' . $request->search . '%')
-                  ->orWhereHas('student', fn($sq) => $sq->where('name', 'like', '%' . $request->search . '%'));
+                  ->orWhereHas('student.user', fn($sq) => $sq->where('name', 'like', '%' . $request->search . '%'));
             });
         }
         // 5. 🔥 FILTER TANGGAL (YANG TADINYA KELEWAT) 🔥
@@ -78,7 +78,13 @@ class BillController extends Controller
      */
     public function create()
     {
-        $students = Student::where('status', 'active')->orderBy('class_name')->orderBy('name')->get();
+        $students = Student::join('users', 'student_profiles.user_id', '=', 'users.id')
+            ->where('student_profiles.status', 'active')
+            ->orderBy('student_profiles.class_name')
+            ->orderBy('users.name')
+            ->select('student_profiles.*', 'users.name as name')
+            ->with('user')
+            ->get();
         $classes = Student::select('class_name')->distinct()->orderBy('class_name')->pluck('class_name');
         $bundles = PosBundle::where('is_active', true)->get(); 
         
@@ -105,7 +111,8 @@ class BillController extends Controller
             $rules['spp_year'] = 'required|integer|min:2020';
             $rules['spp_amount'] = 'required|numeric|min:0';
         } else {
-            $rules['name'] = 'required';
+            $rules['name'] = 'required|string|max:255';
+            $rules['due_date'] = 'nullable|date';
             $rules['item_names'] = 'required|array';
             $rules['item_prices'] = 'required|array';
             $rules['item_qtys'] = 'required|array';
@@ -121,21 +128,30 @@ class BillController extends Controller
             if ($request->target_type == 'student') {
                 $studentsToBill = Student::where('id', $request->student_id)->get();
             } elseif ($request->target_type == 'class') {
-                $studentsToBill = Student::where('class_name', $request->class_name)->where('status', 'active')->get();
+                $studentsToBill = Student::where('class_name', $request->class_name)->where('status', 'active')->orderBy('id')->get();
             } elseif ($request->target_type == 'all') {
-                $studentsToBill = Student::where('status', 'active')->get();
+                $studentsToBill = Student::where('status', 'active')->orderBy('id')->get();
             }
 
             if ($studentsToBill->isEmpty()) {
                 return back()->with('error', 'Tidak ada siswa yang ditemukan.');
             }
 
+            // Pastikan urutan penguncian konsisten berdasarkan ID siswa untuk mencegah deadlock saat proses massal
+            $studentsToBill = $studentsToBill->sortBy('id');
+
             $count = 0;
             $bulanIndo = [1=>'Januari', 2=>'Februari', 3=>'Maret', 4=>'April', 5=>'Mei', 6=>'Juni', 7=>'Juli', 8=>'Agustus', 9=>'September', 10=>'Oktober', 11=>'November', 12=>'Desember'];
 
-            foreach ($studentsToBill as $student) {
-                
-                // Logic Penamaan & Jatuh Tempo
+            foreach ($studentsToBill as $studentItem) {
+                // 1. Kunci baris profil siswa secara pesimistik (Pessimistic Student Lock) di PostgreSQL.
+                // Penguncian ini menserialisasikan pembuatan tagihan untuk siswa ini sehingga 2 request bersamaan tidak balapan.
+                $student = Student::where('id', $studentItem->id)->lockForUpdate()->first();
+                if (!$student) {
+                    continue;
+                }
+
+                // 2. Pemeriksaan duplikasi dilakukan kembali SETELAH lock diperoleh
                 if ($request->type == 'SPP') {
                     $billName = "SPP " . $bulanIndo[$request->spp_month] . " " . $request->spp_year;
                     $totalAmount = $request->spp_amount;
@@ -143,15 +159,16 @@ class BillController extends Controller
                     $billYear = $request->spp_year;
 
                     try {
-                        $dueDate = Carbon::createFromDate($billYear, $billMonth, 10);
+                        $dueDate = Carbon::createFromDate($billYear, $billMonth, 10)->toDateString();
                     } catch (\Exception $e) {
-                        $dueDate = now();
+                        $dueDate = now()->toDateString();
                     }
 
                     $exists = StudentBill::where('student_id', $student->id)
                                          ->where('type', 'SPP')
                                          ->where('bill_month', $billMonth)
                                          ->where('bill_year', $billYear)
+                                         ->whereIn('status', ['UNPAID', 'PAID', 'PARTIAL'])
                                          ->exists();
                 } else {
                     $billName = $request->name;
@@ -159,15 +176,24 @@ class BillController extends Controller
                     foreach ($request->item_prices as $idx => $price) {
                         $totalAmount += ($price * $request->item_qtys[$idx]);
                     }
-                    $billMonth = null;
-                    $billYear = null;
-                    $dueDate = null;
 
-                    $exists = StudentBill::where('student_id', $student->id)
+                    $dueDate = $request->filled('due_date') ? Carbon::parse($request->due_date)->toDateString() : null;
+                    $billMonth = $dueDate ? Carbon::parse($dueDate)->month : ($request->filled('bill_month') ? (int) $request->bill_month : null);
+                    $billYear = $dueDate ? Carbon::parse($dueDate)->year : ($request->filled('bill_year') ? (int) $request->bill_year : null);
+
+                    $queryExists = StudentBill::where('student_id', $student->id)
                                          ->where('name', $billName)
                                          ->where('type', $request->type)
-                                         ->where('status', 'UNPAID')
-                                         ->exists();
+                                         ->whereIn('status', ['UNPAID', 'PAID', 'PARTIAL']);
+
+                    if ($billYear !== null) {
+                        $queryExists->where('bill_year', $billYear);
+                    }
+                    if ($billMonth !== null) {
+                        $queryExists->where('bill_month', $billMonth);
+                    }
+
+                    $exists = $queryExists->exists();
                 }
 
                 if (!$exists) {
@@ -210,6 +236,11 @@ class BillController extends Controller
             }
 
             DB::commit();
+
+            if ($count === 0) {
+                return back()->with('error', 'Tagihan tidak dibuat: tagihan dengan nama atau periode tersebut sudah ada untuk siswa terkait.');
+            }
+
             return redirect()->route('bills.index')->with('success', "Sukses! Tagihan berhasil dibuat untuk {$count} siswa.");
 
         } catch (\Exception $e) {
